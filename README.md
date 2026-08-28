@@ -1,6 +1,6 @@
-# IRON 🦾
+# IRON 
 
-> A digital lifting journal with titanium bones. Built for progression, not aesthetics.
+> A digital lifting journal . Built for progression, not aesthetics.
 
 Lean bulk companion · Workout tracker · Progressive overload system · Nutrition logger · Physique dashboard
 
