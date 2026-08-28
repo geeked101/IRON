@@ -113,8 +113,38 @@ Implemented in `src/utils/progressiveOverload.ts`. Calculates estimated 1RM usin
 ### Dynamic Font Scaling
 Managed via `src/context/FontSizeContext.tsx` and consumed through `useScaledFont()`. Allows users to adjust text scaling (Small, Medium, Large, Extra Large) across all screens dynamically.
 
-### Firebase Integration & Security
-Firebase service in `src/services/firebase.ts` handles optional cloud sync for sessions, weight entries, nutrition, and personal records. All calls are guarded with null checks to prevent runtime errors when cloud sync is unconfigured.
+### Security Architecture
+
+1. **Environment Variables**: API keys and backend project configuration are loaded from environment variables (`EXPO_PUBLIC_FIREBASE_*`) and ignored by `.gitignore`.
+2. **Authentication Isolation**: Authentication uses Firebase Anonymous Auth or user identity. Each user is isolated by `uid`.
+3. **Firestore Security Rules**: Deploy the following rules to secure document access by user ID:
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /sessions/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.uid;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+    }
+    match /weightLogs/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.uid;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+    }
+    match /nutrition/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.uid;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+    }
+    match /prs/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.uid;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+    }
+  }
+}
+```
 
 ## Build and Deployment
 
