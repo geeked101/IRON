@@ -1,195 +1,137 @@
-# IRON 
+# IRON
 
-> A digital lifting journal . Built for progression, not aesthetics.
+Digital lifting journal and progression system built with React Native and Expo.
 
-Lean bulk companion · Workout tracker · Progressive overload system · Nutrition logger · Physique dashboard
+## Overview
 
----
+IRON is a mobile application designed for workout tracking, progressive overload management, nutrition logging, and physique tracking. It uses a 6-day sequential workout cycle with rest day prompts, offline-first local state persistence, and optional Firestore synchronization.
 
-## Stack
+## Tech Stack
 
-| Layer | Tech |
+| Layer | Technology |
 |---|---|
-| Framework | React Native + Expo ~51 |
-| Navigation | React Navigation v6 |
-| State | Zustand |
-| Backend | Firebase (Auth + Firestore) |
-| Charts | react-native-chart-kit |
-| Notifications | Expo Notifications |
+| Framework | React Native (Expo SDK 54) |
 | Language | TypeScript |
+| Navigation | React Navigation v6 (Stack + Bottom Tabs) |
+| State Management | Zustand + AsyncStorage |
+| Backend & Database | Firebase (Auth + Firestore) |
+| UI & Visuals | Vanilla React Native StyleSheet + Custom Theme System |
+| Notifications | Expo Notifications |
 
----
-
-## Project Structure
+## Directory Structure
 
 ```
 IRON/
-├── App.tsx                          # Root entry, Firebase init, navigation
+├── App.tsx                          # Application root entry point
+├── app.config.js                    # Expo configuration with env variable mapping
+├── eas.json                         # EAS build profiles (development, preview, production)
 ├── src/
-│   ├── theme/
-│   │   └── index.ts                 # Titanium color system, typography, spacing
-│   ├── navigation/
-│   │   ├── RootNavigator.tsx        # Auth-gated root: Onboarding vs Main
-│   │   └── OnboardingNavigator.tsx  # 7-step first-launch flow
-│   ├── store/
-│   │   └── index.ts                 # Zustand: auth, profile, workout, nutrition
-│   ├── services/
-│   │   ├── firebase.ts              # Firestore CRUD: sessions, weight, nutrition, PRs
-│   │   └── notifications.ts         # Expo scheduled notifications
+│   ├── components/                  # UI components and interactive visualizers
+│   │   ├── AddCustomFoodModal.tsx   # Custom food entry with live macro ratio bar
+│   │   ├── BreathingRestTimer.tsx   # Rest timer with animated halo pulse
+│   │   ├── MuscleHeatmap.tsx        # Interactive muscle fatigue & recovery heatmap
+│   │   ├── PRCelebrationModal.tsx   # Personal record modal
+│   │   └── ShimmerGlow.tsx          # Metallic shine sweep animation component
+│   ├── context/
+│   │   └── FontSizeContext.tsx      # App-wide text scale provider
 │   ├── data/
-│   │   ├── workoutSplit.ts          # Full PPL×2 split, all exercises + form cues
-│   │   └── kenyaFoods.ts            # 20-item Kenyan food database with macros
-│   ├── utils/
-│   │   └── progressiveOverload.ts   # Smart progression, 1RM calc, bulk insights
-│   └── screens/
-│       ├── HomeScreen.tsx           # Command center
-│       ├── WorkoutScreen.tsx        # Day selector
-│       ├── ActiveWorkoutScreen.tsx  # Live set-by-set tracker + rest timer
-│       ├── NutritionScreen.tsx      # Macro dashboard + meal logger
-│       ├── ProgressScreen.tsx       # Weight/strength/volume charts
-│       ├── RecoveryScreen.tsx       # Day 7 rest UI
-│       ├── SettingsScreen.tsx       # Profile + preferences
-│       └── onboarding/
-│           ├── SplashScreen.tsx
-│           ├── GoalScreen.tsx
-│           ├── LevelScreen.tsx
-│           ├── StatsScreen.tsx
-│           ├── TargetsScreen.tsx
-│           ├── NotificationsScreen.tsx
-│           └── ReadyScreen.tsx
+│   │   ├── kenyaFoods.ts            # Local food catalog with macro breakdowns
+│   │   └── workoutSplit.ts          # PPL split definitions and exercise metadata
+│   ├── hooks/
+│   │   └── useScaledFont.ts         # Hook for typography scaling
+│   ├── navigation/
+│   │   ├── OnboardingNavigator.tsx  # Initial user setup stack navigator
+│   │   └── RootNavigator.tsx        # Root navigation stack and tab router
+│   ├── screens/
+│   │   ├── ActiveWorkoutScreen.tsx  # Real-time workout execution and set logger
+│   │   ├── DayExerciseListScreen.tsx # Day exercise selection and completion tracker
+│   │   ├── HomeScreen.tsx           # Dashboard, workout queue status, daily macros
+│   │   ├── NutritionScreen.tsx      # Calorie and macro logger
+│   │   ├── PhotoDetailScreen.tsx    # Fullscreen progress photo view
+│   │   ├── PhotoProgressScreen.tsx  # Physique progress photo gallery
+│   │   ├── ProgressScreen.tsx       # Analytics, strength 1RM, and weight charts
+│   │   ├── RecoveryScreen.tsx       # Rest day metrics and stretch routine
+│   │   ├── SessionStatsScreen.tsx   # Post-workout summary and PR detection
+│   │   ├── SettingsScreen.tsx       # Preferences and text scale options
+│   │   ├── SingleExerciseScreen.tsx # Exercise set logger and form cues
+│   │   └── onboarding/              # Multi-step onboarding screens
+│   ├── services/
+│   │   ├── firebase.ts              # Firestore data service with null-safety checks
+│   │   └── notifications.ts         # Local notification scheduling service
+│   ├── store/
+│   │   ├── authStore.ts             # Auth state and profile store
+│   │   ├── customFoodStore.ts       # Custom user food items store
+│   │   ├── index.ts                 # Store exports
+│   │   └── queueStore.ts            # Sequential workout queue state machine
+│   ├── theme/
+│   │   └── index.ts                 # Titanium dark design tokens
+│   └── utils/
+│       └── progressiveOverload.ts   # 1RM calculation and progression logic
 ```
-
----
 
 ## Getting Started
 
-### 1. Install dependencies
+### Prerequisites
 
-```bash
-cd IRON
-npm install
-```
+- Node.js (v18 or newer recommended)
+- npm or yarn
+- Expo Go mobile app (for device testing)
 
-### 2. Set up Firebase
+### Installation
 
-1. Go to [console.firebase.google.com](https://console.firebase.google.com)
-2. Create a new project called `iron-app`
-3. Enable **Anonymous Authentication**
-4. Create a **Firestore** database (start in production mode)
-5. Copy your Firebase config into `src/services/firebase.ts`
+1. Clone the repository:
+   ```bash
+   git clone git@github.com:geeked101/IRON.git
+   cd IRON
+   ```
 
-### 3. Firestore Collections
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-Create these collections (they auto-create on first write):
+3. Environment Setup (Optional for cloud sync):
+   Copy `.env.example` to `.env` and set your Firebase configuration keys:
+   ```bash
+   cp .env.example .env
+   ```
+   If `.env` is omitted, the application operates in local offline mode using `AsyncStorage`.
 
-| Collection | Document ID | Purpose |
-|---|---|---|
-| `users` | `{uid}` | Profile + preferences |
-| `sessions` | auto | Workous}` | Daily nutrition logs |
-| `prs` | `{uid}_{exerciseName}` | Personal records |
+4. Start the Metro bundler:
+   ```bash
+   npx expo start
+   ```
 
-### 4. Firestore Security Rules
+## Key Modules
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{uid} {
-      allow read, write: if request.auth.uid == uid;
-    }
-    match /sessions/{docId} {
-      allow read, write: if request.auth.uid == resource.data.uid
-        || (request.auth != null && request.resource.data.uid == request.auth.uid);
-    }
-    match /weightLogs/{docId} {
-      allow read, write: if request.auth.uid == resource.data.uid
-        || (request.auth != null && request.resource.data.uid == request.auth.uid);
-    }
-    match /nutrition/{docId} {
-      allow read, write: if request.auth != null;
-    }
-    match /prs/{docId} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}
-```
-
-### 5. Run the app
-
-```bash
-npx expo start
-```
-
-Scan the QR code with **Expo Go** on your phone.
-
----
-
-## Core Features
+### Sequential Workout Queue
+Centralized in `src/store/queueStore.ts`. Tracks workout progression through a 6-day sequential cycle regardless of calendar days. Completing Day 6 triggers a rest prompt before advancing to Day 7 (Recovery) or rolling over to Day 1 of the next cycle.
 
 ### Progressive Overload Engine
-Located in `src/utils/progressiveOverload.ts`
+Implemented in `src/utils/progressiveOverload.ts`. Calculates estimated 1RM using the Brzycki formula and evaluates set performance against target reps to suggest weight adjustments (+2.5kg increment on completion or deload adjustments).
 
-- Brzycki 1RM estimation
-- Session-over-session analysis
-- Auto-suggests +2.5kg when all target reps hit
-- Detects fatigue and suggests deload
+### Dynamic Font Scaling
+Managed via `src/context/FontSizeContext.tsx` and consumed through `useScaledFont()`. Allows users to adjust text scaling (Small, Medium, Large, Extra Large) across all screens dynamically.
 
-### Smart Bulk Insights
-- Mifflin-St Jeor BMR → TDEE calculation
-- Weekly weight trend analysis
-- Auto-flags when weight stalls (→ eat more) or rises too fast (→ scale back)
+### Firebase Integration & Security
+Firebase service in `src/services/firebase.ts` handles optional cloud sync for sessions, weight entries, nutrition, and personal records. All calls are guarded with null checks to prevent runtime errors when cloud sync is unconfigured.
 
-### Kenyan Food Database
-`src/data/kenyaFoods.ts` — 20 foods across 6 categories:
-Staples · Meat · Vegetables · Legumes · Snacks · Drinks
+## Build and Deployment
 
-Includes the Mass Shake (850 kcal, 35g protein — liquid construction material).
-
----
-
-## Titanium Theme
-
-```
-Background:  #0B0D12
-Cards:       #161A22
-Deep:        #0f1117
-Accent:      #C0C4CC  (titanium highlight)
-Mid:         #8B8F98  (titanium mid)
-Text:        #F5F7FA
+### Development Build
+```bash
+npx expo run:android
 ```
 
-Feels like gym equipment forged by spacecraft engineers.
-
----
-
-## Build for Production
-
+### Production Build via EAS
 ```bash
 # Install EAS CLI
 npm install -g eas-cli
 
-# Configure EAS
-eas build:configure
-
 # Build Android APK
 eas build --platform android --profile preview
-
-# Build iOS (requires Apple Developer account)
-eas build --platform ios
 ```
 
----
+## License
 
-## What's Next (Phase 2)
-
-- [ ] AI 
-- [ ] Barcode scanner 
-- [ ] Apple Health / Google Fit integration
-- [ ] Smart recovery score (HRV-based)
-- [ ] Custom workout creator
-- [ ] Social — share PRs
-
----
-
-*IRON. Not a fitness influencer app. A digital lifting journal with titanium bones.*
+MIT License.
