@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "IRON",
+    "slug": "iron-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B0D12"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.plutoluto.ironapp",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "backgroundColor": "#0B0D12",
+      "navigationBarColor": "#0B0D12",
+      "package": "com.plutoluto.ironapp",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B0D12"
+      }
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#C0C4CC"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "27fc138b-b84b-4aae-9b6c-ee225ecf896f"
+      }
+    }
+  }
+}
