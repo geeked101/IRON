@@ -25,6 +25,7 @@ import { WORKOUT_SPLIT } from '../data/workoutSplit'
 import { fetchRecentSessions, WorkoutSession, logWeight } from '../services/firebase'
 import { calculateWorkoutStreak } from '../utils/progressiveOverload'
 import { useScaledFont } from '../hooks/useScaledFont'
+import ShimmerGlow from '../components/ShimmerGlow'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -322,13 +323,14 @@ export default function HomeScreen({ navigation }: any) {
         {/* ── STATE (a): Ready — show Start Workout button ─── */}
         {!sessionCompleted && !isRestDay && (
           <TouchableOpacity
-            style={styles.startBtn}
+            style={[styles.startBtn, { overflow: 'hidden' }]}
             onPress={() => navigation.navigate('Workout', {
               screen: 'DayExerciseList',
               params: { day: currentDay },
             })}
             activeOpacity={0.85}
           >
+            <ShimmerGlow />
             <Text style={[styles.startBtnText, { fontSize: f.body + 1 }]}>
               Start {todayWorkout.name} workout
             </Text>

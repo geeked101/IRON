@@ -11,6 +11,7 @@ import { useQueueStore } from '../store/queueStore'
 import { saveWorkoutSession, updatePR, fetchRecentSessions, fetchAllPRs, WorkoutSession } from '../services/firebase'
 import { WORKOUT_SPLIT } from '../data/workoutSplit'
 import { suggestProgression, estimateOneRepMax } from '../utils/progressiveOverload'
+import BreathingRestTimer from '../components/BreathingRestTimer'
 
 // ─── Rest Timer ───────────────────────────────────────────────────────────────
 
@@ -316,7 +317,7 @@ export default function ActiveWorkoutScreen({ route, navigation }: any) {
         <View style={s.ph}>
           <Text style={s.dateText}>After set {activeEx?.sets.length}</Text>
           <Text style={s.bigTitle}>Rest.</Text>
-          <RestTimer seconds={workoutEx?.restSeconds ?? 90} onSkip={handleRestDone} />
+          <BreathingRestTimer seconds={workoutEx?.restSeconds ?? 90} onSkip={handleRestDone} />
           <View style={s.card}>
             <Text style={s.label}>NEXT</Text>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.sm }}>

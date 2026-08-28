@@ -24,6 +24,7 @@ import {
 import { estimateOneRepMax } from '../utils/progressiveOverload'
 import { colors, spacing, radius } from '../theme'
 import { useScaledFont } from '../hooks/useScaledFont'
+import PRCelebrationModal from '../components/PRCelebrationModal'
 
 /** SessionStatsScreen — final screen of the workout flow. */
 export default function SessionStatsScreen({ route, navigation }: any) {
@@ -42,6 +43,7 @@ export default function SessionStatsScreen({ route, navigation }: any) {
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [newPRs, setNewPRs] = useState<string[]>([])
+  const [showPRModal, setShowPRModal] = useState(false)
   const savedRef = useRef(false)
 
   // ── Compute stats ────────────────────────────────────────────────────────────
@@ -97,6 +99,9 @@ export default function SessionStatsScreen({ route, navigation }: any) {
       }
 
       setNewPRs(detected)
+      if (detected.length > 0) {
+        setShowPRModal(true)
+      }
     } catch (err) {
       console.warn('[SessionStats] PR detection error:', err)
     }
@@ -250,6 +255,11 @@ export default function SessionStatsScreen({ route, navigation }: any) {
       </View>
 
       <View style={{ height: insets.bottom + spacing.xxl }} />
+      <PRCelebrationModal
+        visible={showPRModal}
+        prs={newPRs}
+        onClose={() => setShowPRModal(false)}
+      />
     </ScrollView>
   )
 }

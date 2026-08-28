@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, spacing, radius, typography } from '../theme'
 import { STRETCH_ROUTINE } from '../data/workoutSplit'
 import { useNutritionStore } from '../store/index'
+import MuscleHeatmap from '../components/MuscleHeatmap'
 
 type Soreness = 'fresh' | 'moderate' | 'sore'
 const sorenessColor: Record<Soreness, string> = {
@@ -90,6 +91,9 @@ export default function RecoveryScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Muscle Recovery Heatmap */}
+        <MuscleHeatmap />
 
         {/* Soreness map */}
         <View style={s.card}>
