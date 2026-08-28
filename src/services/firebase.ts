@@ -21,6 +21,23 @@ import {
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore'
+import {
+  dbSaveUserProfile,
+  dbGetUserProfile,
+  dbGetAnyUserProfile,
+  dbSaveWorkoutSession,
+  dbGetRecentWorkoutSessions,
+  dbUpsertPR,
+  dbGetAllPRs,
+  dbAddWeightLog,
+  dbGetWeightHistory,
+  dbSaveNutritionLog,
+  dbGetNutritionLog,
+  dbGetRecentNutritionLogs,
+  dbSaveCustomFood,
+  dbGetCustomFoods,
+  dbDeleteCustomFood,
+} from './localDb'
 
 /**
  * Firebase configuration — values are injected from EXPO_PUBLIC_ environment
@@ -152,26 +169,57 @@ export interface UserProfile {
 }
 
 /**
- * Persist (or merge-update) a user's profile document in Firestore.
+ * Persist (or merge-update) a user's profile document.
+ * Writes to local SQLite immediately, then syncs to Firestore in background.
  */
 export async function saveUserProfile(uid: string, profile: Partial<UserProfile>): Promise<void> {
+  // 1. Save to local SQLite immediately (offline-first)
+  try {
+    dbSaveUserProfile({ ...profile, uid })
+  } catch (err) {
+    console.error('[LocalDB] Error saving user profile locally:', err)
+  }
+
+  // 2. Sync to Firestore in background if available
   const db = getFirebaseDb()
   if (!db) return
-  await setDoc(
-    doc(db, 'users', uid),
-    { ...profile, updatedAt: serverTimestamp() },
-    { merge: true },
-  )
+  try {
+    await setDoc(
+      doc(db, 'users', uid),
+      { ...profile, updatedAt: serverTimestamp() },
+      { merge: true },
+    )
+  } catch (err) {
+    console.warn('[Firebase] Background profile sync failed (offline?):', err)
+  }
 }
 
 /**
- * Fetch a user's profile. Returns null if no document exists yet.
+ * Fetch a user's profile. Reads from local SQLite first for zero latency.
  */
 export async function fetchUserProfile(uid: string): Promise<UserProfile | null> {
+  // 1. Read from local SQLite
+  try {
+    const local = uid ? dbGetUserProfile(uid) : dbGetAnyUserProfile()
+    if (local) return local
+  } catch (err) {
+    console.error('[LocalDB] Error reading user profile locally:', err)
+  }
+
+  // 2. Fallback to Firestore if local not found and online
   const db = getFirebaseDb()
-  if (!db) return null
-  const snap = await getDoc(doc(db, 'users', uid))
-  return snap.exists() ? (snap.data() as UserProfile) : null
+  if (!db || !uid) return null
+  try {
+    const snap = await getDoc(doc(db, 'users', uid))
+    if (snap.exists()) {
+      const data = snap.data() as UserProfile
+      dbSaveUserProfile(data)
+      return data
+    }
+  } catch (err) {
+    console.warn('[Firebase] Profile fetch failed (offline?):', err)
+  }
+  return null
 }
 
 // ─── Workout Sessions ─────────────────────────────────────────────────────────
@@ -203,8 +251,7 @@ export interface WorkoutSession {
 // ─── Custom Foods ─────────────────────────────────────────────────────────────
 
 /**
- * A food entry created by the user. Stored in Firestore under
- * users/{uid}/customFoods and cached in AsyncStorage.
+ * A food entry created by the user. Stored in local SQLite and Firestore.
  */
 export interface CustomFood {
   id: string                // client-generated: Date.now().toString()
@@ -220,68 +267,126 @@ export interface CustomFood {
 }
 
 /**
- * Save a custom food to Firestore subcollection users/{uid}/customFoods.
- * @param uid  - Firebase user UID
- * @param food - The complete CustomFood object
+ * Save a custom food to local SQLite and Firestore.
  */
 export async function saveCustomFood(uid: string, food: CustomFood): Promise<void> {
+  // 1. Save to local SQLite
+  try {
+    dbSaveCustomFood(uid, food)
+  } catch (err) {
+    console.error('[LocalDB] Error saving custom food locally:', err)
+  }
+
+  // 2. Sync to Firestore in background
   const db = getFirebaseDb()
   if (!db) return
-  await setDoc(doc(db, 'users', uid, 'customFoods', food.id), food)
+  try {
+    await setDoc(doc(db, 'users', uid, 'customFoods', food.id), food)
+  } catch (err) {
+    console.warn('[Firebase] Custom food sync failed (offline?):', err)
+  }
 }
 
 /**
- * Fetch all custom foods for a user from Firestore.
- * @param uid - Firebase user UID
+ * Fetch all custom foods for a user from local SQLite with Firestore sync fallback.
  */
 export async function fetchCustomFoods(uid: string): Promise<CustomFood[]> {
+  try {
+    const local = dbGetCustomFoods(uid)
+    if (local.length > 0) return local
+  } catch (err) {
+    console.error('[LocalDB] Error reading custom foods locally:', err)
+  }
+
   const db = getFirebaseDb()
   if (!db) return []
-  const snap = await getDocs(collection(db, 'users', uid, 'customFoods'))
-  return snap.docs.map(d => d.data() as CustomFood)
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'customFoods'))
+    const foods = snap.docs.map(d => d.data() as CustomFood)
+    foods.forEach(f => dbSaveCustomFood(uid, f))
+    return foods
+  } catch (err) {
+    console.warn('[Firebase] Custom foods fetch failed (offline?):', err)
+    return []
+  }
 }
 
 /**
- * Delete a custom food by its id from Firestore.
- * @param uid    - Firebase user UID
- * @param foodId - The food's id field
+ * Delete a custom food by its id from local SQLite and Firestore.
  */
 export async function deleteCustomFood(uid: string, foodId: string): Promise<void> {
+  try {
+    dbDeleteCustomFood(uid, foodId)
+  } catch (err) {
+    console.error('[LocalDB] Error deleting custom food locally:', err)
+  }
+
   const db = getFirebaseDb()
   if (!db) return
-  const { deleteDoc } = await import('firebase/firestore')
-  await deleteDoc(doc(db, 'users', uid, 'customFoods', foodId))
+  try {
+    const { deleteDoc } = await import('firebase/firestore')
+    await deleteDoc(doc(db, 'users', uid, 'customFoods', foodId))
+  } catch (err) {
+    console.warn('[Firebase] Custom food delete sync failed (offline?):', err)
+  }
 }
 
 /**
- * Save a completed workout session to Firestore.
- * Returns the new document ID.
+ * Save a completed workout session to local SQLite and Firestore.
+ * Returns the session ID.
  */
 export async function saveWorkoutSession(session: Omit<WorkoutSession, 'id'>): Promise<string> {
+  // 1. Save to local SQLite immediately
+  let localId = ''
+  try {
+    localId = dbSaveWorkoutSession(session)
+  } catch (err) {
+    console.error('[LocalDB] Error saving workout session locally:', err)
+    localId = `sess_${Date.now()}`
+  }
+
+  // 2. Sync to Firestore in background
   const db = getFirebaseDb()
-  if (!db) return ''
-  const ref = await addDoc(collection(db, 'sessions'), {
-    ...session,
-    loggedAt: serverTimestamp(),
-  })
-  return ref.id
+  if (db) {
+    addDoc(collection(db, 'sessions'), {
+      ...session,
+      loggedAt: serverTimestamp(),
+    }).catch(err => {
+      console.warn('[Firebase] Workout session sync failed (offline?):', err)
+    })
+  }
+
+  return localId
 }
 
 /**
- * Fetch the most recent sessions for a user, ordered by date descending.
- * Applies the limit server-side for efficiency.
+ * Fetch the most recent sessions for a user from local SQLite.
  */
 export async function fetchRecentSessions(uid: string, sessionLimit = 20): Promise<WorkoutSession[]> {
+  try {
+    const local = dbGetRecentWorkoutSessions(uid, sessionLimit)
+    if (local.length > 0) return local
+  } catch (err) {
+    console.error('[LocalDB] Error reading workout sessions locally:', err)
+  }
+
   const db = getFirebaseDb()
   if (!db) return []
-  const q = query(
-    collection(db, 'sessions'),
-    where('uid', '==', uid),
-    orderBy('loggedAt', 'desc'),
-    limit(sessionLimit),
-  )
-  const snap = await getDocs(q)
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as WorkoutSession))
+  try {
+    const q = query(
+      collection(db, 'sessions'),
+      where('uid', '==', uid),
+      orderBy('loggedAt', 'desc'),
+      limit(sessionLimit),
+    )
+    const snap = await getDocs(q)
+    const sessions = snap.docs.map(d => ({ id: d.id, ...d.data() } as WorkoutSession))
+    sessions.forEach(s => dbSaveWorkoutSession(s))
+    return sessions
+  } catch (err) {
+    console.warn('[Firebase] Recent sessions fetch failed (offline?):', err)
+    return []
+  }
 }
 
 // ─── Weight Logs ──────────────────────────────────────────────────────────────
@@ -294,32 +399,58 @@ export interface WeightLog {
 }
 
 /**
- * Append a body-weight entry for the given user.
+ * Append a body-weight entry to local SQLite and Firestore.
  */
 export async function logWeight(uid: string, weight: number): Promise<string> {
+  let localId = ''
+  try {
+    localId = dbAddWeightLog(uid, weight)
+  } catch (err) {
+    console.error('[LocalDB] Error saving weight log locally:', err)
+    localId = `w_${Date.now()}`
+  }
+
   const db = getFirebaseDb()
-  if (!db) return ''
-  const ref = await addDoc(collection(db, 'weightLogs'), {
-    uid,
-    weight,
-    loggedAt: serverTimestamp(),
-  })
-  return ref.id
+  if (db) {
+    addDoc(collection(db, 'weightLogs'), {
+      uid,
+      weight,
+      loggedAt: serverTimestamp(),
+    }).catch(err => {
+      console.warn('[Firebase] Weight log sync failed (offline?):', err)
+    })
+  }
+
+  return localId
 }
 
 /**
- * Fetch all weight entries for a user in ascending chronological order.
+ * Fetch all weight entries for a user from local SQLite.
  */
 export async function fetchWeightHistory(uid: string): Promise<WeightLog[]> {
+  try {
+    const local = dbGetWeightHistory(uid)
+    if (local.length > 0) return local
+  } catch (err) {
+    console.error('[LocalDB] Error reading weight history locally:', err)
+  }
+
   const db = getFirebaseDb()
   if (!db) return []
-  const q = query(
-    collection(db, 'weightLogs'),
-    where('uid', '==', uid),
-    orderBy('loggedAt', 'asc'),
-  )
-  const snap = await getDocs(q)
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as WeightLog))
+  try {
+    const q = query(
+      collection(db, 'weightLogs'),
+      where('uid', '==', uid),
+      orderBy('loggedAt', 'asc'),
+    )
+    const snap = await getDocs(q)
+    const history = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeightLog))
+    history.forEach(w => dbAddWeightLog(uid, w.weight, w.loggedAt ? String(w.loggedAt) : undefined))
+    return history
+  } catch (err) {
+    console.warn('[Firebase] Weight history fetch failed (offline?):', err)
+    return []
+  }
 }
 
 // ─── Nutrition Logs ───────────────────────────────────────────────────────────
@@ -345,47 +476,86 @@ export interface MealEntry {
 }
 
 /**
- * Save (or merge-update) a nutrition log for the given user and date.
- * Document ID is `{uid}_{date}` for quick lookup.
+ * Save (or merge-update) a nutrition log in local SQLite and Firestore.
  */
 export async function saveNutritionLog(
   uid: string,
   date: string,
   data: Partial<NutritionLog>,
 ): Promise<void> {
+  try {
+    dbSaveNutritionLog(uid, date, data)
+  } catch (err) {
+    console.error('[LocalDB] Error saving nutrition log locally:', err)
+  }
+
   const db = getFirebaseDb()
   if (!db) return
-  await setDoc(
-    doc(db, 'nutrition', `${uid}_${date}`),
-    { uid, date, ...data, updatedAt: serverTimestamp() },
-    { merge: true },
-  )
+  try {
+    await setDoc(
+      doc(db, 'nutrition', `${uid}_${date}`),
+      { uid, date, ...data, updatedAt: serverTimestamp() },
+      { merge: true },
+    )
+  } catch (err) {
+    console.warn('[Firebase] Nutrition log sync failed (offline?):', err)
+  }
 }
 
 /**
- * Fetch a single day's nutrition log. Returns null if not yet logged.
+ * Fetch a single day's nutrition log from local SQLite.
  */
 export async function fetchNutritionLog(uid: string, date: string): Promise<NutritionLog | null> {
+  try {
+    const local = dbGetNutritionLog(uid, date)
+    if (local) return local
+  } catch (err) {
+    console.error('[LocalDB] Error reading nutrition log locally:', err)
+  }
+
   const db = getFirebaseDb()
   if (!db) return null
-  const snap = await getDoc(doc(db, 'nutrition', `${uid}_${date}`))
-  return snap.exists() ? (snap.data() as NutritionLog) : null
+  try {
+    const snap = await getDoc(doc(db, 'nutrition', `${uid}_${date}`))
+    if (snap.exists()) {
+      const data = snap.data() as NutritionLog
+      dbSaveNutritionLog(uid, date, data)
+      return data
+    }
+  } catch (err) {
+    console.warn('[Firebase] Nutrition log fetch failed (offline?):', err)
+  }
+  return null
 }
 
 /**
- * Fetch recent nutrition logs.
+ * Fetch recent nutrition logs from local SQLite.
  */
 export async function fetchRecentNutritionLogs(uid: string, limitDays = 7): Promise<NutritionLog[]> {
+  try {
+    const local = dbGetRecentNutritionLogs(uid, limitDays)
+    if (local.length > 0) return local
+  } catch (err) {
+    console.error('[LocalDB] Error reading recent nutrition logs locally:', err)
+  }
+
   const db = getFirebaseDb()
   if (!db) return []
-  const q = query(
-    collection(db, 'nutrition'),
-    where('uid', '==', uid),
-    orderBy('date', 'desc'),
-    limit(limitDays)
-  )
-  const snap = await getDocs(q)
-  return snap.docs.map(d => d.data() as NutritionLog)
+  try {
+    const q = query(
+      collection(db, 'nutrition'),
+      where('uid', '==', uid),
+      orderBy('date', 'desc'),
+      limit(limitDays)
+    )
+    const snap = await getDocs(q)
+    const logs = snap.docs.map(d => d.data() as NutritionLog)
+    logs.forEach(l => dbSaveNutritionLog(uid, l.date, l))
+    return logs
+  } catch (err) {
+    console.warn('[Firebase] Recent nutrition logs fetch failed (offline?):', err)
+    return []
+  }
 }
 
 // ─── Personal Records ─────────────────────────────────────────────────────────
@@ -398,8 +568,7 @@ export interface PR {
 }
 
 /**
- * Upsert a personal record for a given exercise.
- * Document ID is `{uid}_{exercise_name_with_underscores}`.
+ * Upsert a personal record for a given exercise in local SQLite and Firestore.
  */
 export async function updatePR(
   uid: string,
@@ -407,22 +576,47 @@ export async function updatePR(
   weight: number,
   reps: number,
 ): Promise<void> {
+  try {
+    dbUpsertPR(uid, exercise, weight, reps)
+  } catch (err) {
+    console.error('[LocalDB] Error saving PR locally:', err)
+  }
+
   const db = getFirebaseDb()
   if (!db) return
-  await setDoc(
-    doc(db, 'prs', `${uid}_${exercise.replace(/\s+/g, '_')}`),
-    { uid, exerciseName: exercise, weight, reps, achievedAt: serverTimestamp() },
-    { merge: true },
-  )
+  try {
+    await setDoc(
+      doc(db, 'prs', `${uid}_${exercise.replace(/\s+/g, '_')}`),
+      { uid, exerciseName: exercise, weight, reps, achievedAt: serverTimestamp() },
+      { merge: true },
+    )
+  } catch (err) {
+    console.warn('[Firebase] PR sync failed (offline?):', err)
+  }
 }
 
 /**
- * Fetch all personal records for a user.
+ * Fetch all personal records for a user from local SQLite.
  */
 export async function fetchAllPRs(uid: string): Promise<PR[]> {
+  try {
+    const local = dbGetAllPRs(uid)
+    if (local.length > 0) return local
+  } catch (err) {
+    console.error('[LocalDB] Error reading PRs locally:', err)
+  }
+
   const db = getFirebaseDb()
   if (!db) return []
-  const q = query(collection(db, 'prs'), where('uid', '==', uid))
-  const snap = await getDocs(q)
-  return snap.docs.map(d => d.data() as PR)
+  try {
+    const q = query(collection(db, 'prs'), where('uid', '==', uid))
+    const snap = await getDocs(q)
+    const prs = snap.docs.map(d => d.data() as PR)
+    prs.forEach(p => dbUpsertPR(uid, p.exerciseName, p.weight, p.reps))
+    return prs
+  } catch (err) {
+    console.warn('[Firebase] PRs fetch failed (offline?):', err)
+    return []
+  }
 }
+
