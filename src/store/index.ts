@@ -1,5 +1,7 @@
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import { format } from 'date-fns'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
   signInAnon,
   listenAuthState,
@@ -13,6 +15,9 @@ import {
   saveNutritionLog,
   fetchNutritionLog,
 } from '../services/firebase'
+import { dbGetAnyUserProfile } from '../services/localDb'
+
+const ASYNC_UID_KEY = 'iron_local_uid'
 
 // ─── Auth Store ───────────────────────────────────────────────────────────────
 
@@ -20,52 +25,93 @@ interface AuthState {
   uid: string | null
   isReady: boolean
   isOnboarded: boolean
-  initialize: () => void
-  setOnboarded: () => void
+  initialize: () => Promise<void>
+  setOnboarded: (value?: boolean) => void
+  setUid: (uid: string) => void
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
-  uid: null,
-  isReady: false,
-  isOnboarded: false,
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      uid: null,
+      isReady: false,
+      isOnboarded: false,
 
-  initialize: () => {
-    try {
-      console.log('[AuthStore] Setting up authentication state listener...')
-      listenAuthState(async (user) => {
+      initialize: async () => {
         try {
-          if (user) {
-            console.log('[AuthStore] User authenticated successfully:', user.uid)
-            const profile = await fetchUserProfile(user.uid)
-            if (profile) {
-              useProfileStore.getState().setProfile(profile)
+          // 1. Resolve local persistent UID immediately
+          let localUid = get().uid
+          if (!localUid) {
+            localUid = await AsyncStorage.getItem(ASYNC_UID_KEY)
+          }
+          if (!localUid) {
+            // Check if there is an existing profile in local SQLite
+            const existingProfile = dbGetAnyUserProfile()
+            if (existingProfile?.uid) {
+              localUid = existingProfile.uid
+            } else {
+              localUid = `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
             }
-            set({
-              uid: user.uid,
-              isReady: true,
-              isOnboarded: !!profile?.goal,
+          }
+          await AsyncStorage.setItem(ASYNC_UID_KEY, localUid)
+
+          // 2. Load cached profile from local SQLite
+          const cachedProfile = await fetchUserProfile(localUid)
+          if (cachedProfile) {
+            useProfileStore.getState().setProfile(cachedProfile)
+          }
+
+          const hasValidGoal = !!(cachedProfile?.goal || useProfileStore.getState().profile?.goal)
+
+          // Mark ready and onboarded if valid profile exists or was persisted
+          set({
+            uid: localUid,
+            isReady: true,
+            isOnboarded: get().isOnboarded || hasValidGoal,
+          })
+
+          // 3. Background Firebase listener if configured
+          if (isFirebaseConfigured()) {
+            listenAuthState(async (user) => {
+              try {
+                if (user) {
+                  console.log('[AuthStore] Cloud authenticated UID:', user.uid)
+                  const remoteProfile = await fetchUserProfile(user.uid)
+                  if (remoteProfile) {
+                    useProfileStore.getState().setProfile(remoteProfile)
+                    set({
+                      uid: user.uid,
+                      isOnboarded: !!remoteProfile?.goal,
+                    })
+                    await AsyncStorage.setItem(ASYNC_UID_KEY, user.uid)
+                  }
+                } else {
+                  await signInAnon()
+                }
+              } catch (cloudErr) {
+                console.warn('[AuthStore] Background cloud auth error:', cloudErr)
+              }
             })
-          } else if (isFirebaseConfigured()) {
-            console.log('[AuthStore] No user found, initiating anonymous sign-in...')
-            await signInAnon()
-          } else {
-            console.warn('[AuthStore] Firebase not configured — running without cloud sync.')
-            set({ uid: null, isReady: true, isOnboarded: false })
           }
         } catch (error) {
-          console.error('[AuthStore] Error inside auth state handler:', error)
-          // Gracefully complete loading state to avoid infinite loading screens
+          console.error('[AuthStore] Local initialization error:', error)
           set({ isReady: true })
         }
-      })
-    } catch (error) {
-      console.error('[AuthStore] Error setting up auth listener:', error)
-      set({ isReady: true })
-    }
-  },
+      },
 
-  setOnboarded: () => set({ isOnboarded: true }),
-}))
+      setOnboarded: (value = true) => set({ isOnboarded: value }),
+      setUid: (uid: string) => set({ uid }),
+    }),
+    {
+      name: 'iron_auth_storage',
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        uid: state.uid,
+        isOnboarded: state.isOnboarded,
+      }),
+    }
+  )
+)
 
 // ─── Profile Store ─────────────────────────────────────────────────────────────
 
@@ -75,38 +121,50 @@ interface ProfileState {
   saveProfile: () => Promise<void>
 }
 
-export const useProfileStore = create<ProfileState>((set, get) => ({
-  profile: null,
+export const useProfileStore = create<ProfileState>()(
+  persist(
+    (set, get) => ({
+      profile: null,
 
-  setProfile: (partial) =>
-    set((s) => ({
-      profile: s.profile ? { ...s.profile, ...partial } : (partial as UserProfile),
-    })),
+      setProfile: (partial) =>
+        set((s) => ({
+          profile: s.profile ? { ...s.profile, ...partial } : (partial as UserProfile),
+        })),
 
-  saveProfile: async () => {
-    const { profile } = get()
-    const { uid } = useAuthStore.getState()
-    if (!profile?.goal) return
+      saveProfile: async () => {
+        const { profile } = get()
+        let { uid } = useAuthStore.getState()
+        if (!profile?.goal) return
 
-    const payload: Partial<UserProfile> = {
-      ...profile,
-      uid: uid ?? profile.uid ?? '',
-      gender: profile.gender ?? 'male',
-      notifications: profile.notifications ?? false,
-      autoProgressiveOverload: profile.autoProgressiveOverload ?? true,
+        if (!uid) {
+          uid = `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
+          await AsyncStorage.setItem(ASYNC_UID_KEY, uid)
+          useAuthStore.getState().setUid(uid)
+        }
+
+        const payload: Partial<UserProfile> = {
+          ...profile,
+          uid: uid ?? profile.uid ?? '',
+          gender: profile.gender ?? 'male',
+          notifications: profile.notifications ?? false,
+          autoProgressiveOverload: profile.autoProgressiveOverload ?? true,
+        }
+
+        try {
+          await saveUserProfile(uid, payload)
+        } catch (error) {
+          console.warn('[ProfileStore] Save failed:', error)
+        }
+
+        useAuthStore.getState().setOnboarded(true)
+      },
+    }),
+    {
+      name: 'iron_profile_storage',
+      storage: createJSONStorage(() => AsyncStorage),
     }
-
-    if (uid) {
-      try {
-        await saveUserProfile(uid, payload)
-      } catch (error) {
-        console.warn('[ProfileStore] Firestore save failed; entering app locally:', error)
-      }
-    }
-
-    useAuthStore.getState().setOnboarded()
-  },
-}))
+  )
+)
 
 // ─── Workout Store ─────────────────────────────────────────────────────────────
 

@@ -34,7 +34,8 @@
           "icon": "./assets/notification-icon.png",
           "color": "#C0C4CC"
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "extra": {
       "eas": {

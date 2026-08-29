@@ -8,11 +8,12 @@ import { useQueueStore } from './src/store/queueStore'
 import { FontSizeProvider } from './src/context/FontSizeContext'
 import RootNavigator from './src/navigation/RootNavigator'
 import { initFirebase } from './src/services/firebase'
+import { initLocalDatabase } from './src/services/localDb'
 
 /**
  * Root application component.
- * Initialises authentication and hydrates the workout queue from
- * AsyncStorage on mount. FontSizeProvider makes the user's text-scale
+ * Initialises local SQLite database, authentication, and hydrates the workout
+ * queue from AsyncStorage on mount. FontSizeProvider makes the user's text-scale
  * preference available to every screen in the tree.
  */
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
   const loadQueue = useQueueStore((s) => s.load)
 
   useEffect(() => {
+    initLocalDatabase()
     initFirebase()
     loadQueue(null)
     initialize()
