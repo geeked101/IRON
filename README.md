@@ -1,4 +1,4 @@
-# 💪 IRON
+#  IRON
 
 Your personal gym tracker and trainer — a mobile app that keeps you accountable, pushes your limits, and tracks every rep that counts.
 
@@ -117,4 +117,4 @@ eas build --platform android --profile preview
 
 ## License
 
-MIT License — build something awesome! 🚀
+MIT License — build something awesome! 
