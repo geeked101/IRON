@@ -32,12 +32,27 @@ function FoodDetailModal({ food, visible, onClose, onAdd }: {
   onAdd: (meal: MealEntry) => void
 }) {
   const [servings, setServings] = useState(1)
+  const [servingsText, setServingsText] = useState('1.0')
+
+  useEffect(() => {
+    if (visible) {
+      setServings(1)
+      setServingsText('1.0')
+    }
+  }, [visible])
+
   if (!food) return null
 
   const cal = Math.round(food.caloriesPerServing * servings)
   const pro = Math.round(food.proteinG * servings)
   const carb = Math.round(food.carbsG * servings)
   const fat = Math.round(food.fatG * servings)
+
+  const updateServings = (val: number) => {
+    const clamped = Math.max(0.1, Math.min(50, parseFloat(val.toFixed(1))))
+    setServings(clamped)
+    setServingsText(clamped.toFixed(1))
+  }
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -57,11 +72,41 @@ function FoodDetailModal({ food, visible, onClose, onAdd }: {
           <View style={md.servRow}>
             <Text style={md.servLabel}>Servings</Text>
             <View style={md.stepper}>
-              <TouchableOpacity style={md.stepBtn} onPress={() => setServings(s => Math.max(0.5, parseFloat((s - 0.5).toFixed(1))))}>
+              <TouchableOpacity
+                style={md.stepBtn}
+                onPress={() => updateServings(servings - 0.5)}
+                activeOpacity={0.7}
+              >
                 <Text style={md.stepText}>−</Text>
               </TouchableOpacity>
-              <Text style={md.stepVal}>{servings.toFixed(1)}</Text>
-              <TouchableOpacity style={md.stepBtn} onPress={() => setServings(s => parseFloat((s + 0.5).toFixed(1)))}>
+              <View style={md.stepInputBox}>
+                <TextInput
+                  style={md.stepInput}
+                  value={servingsText}
+                  onChangeText={(t) => {
+                    setServingsText(t)
+                    const parsed = parseFloat(t)
+                    if (!isNaN(parsed) && parsed > 0) {
+                      setServings(parsed)
+                    }
+                  }}
+                  onBlur={() => {
+                    const parsed = parseFloat(servingsText)
+                    if (isNaN(parsed) || parsed <= 0) {
+                      setServingsText(servings.toFixed(1))
+                    } else {
+                      updateServings(parsed)
+                    }
+                  }}
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                />
+              </View>
+              <TouchableOpacity
+                style={md.stepBtn}
+                onPress={() => updateServings(servings + 0.5)}
+                activeOpacity={0.7}
+              >
                 <Text style={md.stepText}>+</Text>
               </TouchableOpacity>
             </View>
@@ -103,10 +148,11 @@ const md = StyleSheet.create({
   macroLab: { fontSize: 10, color: colors.textMuted, marginTop: 2 },
   servRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.bgDeep, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
   servLabel: { fontSize: 14, color: colors.textPrimary },
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  stepBtn: { width: 34, height: 34, borderRadius: 8, backgroundColor: colors.bgInset, alignItems: 'center', justifyContent: 'center' },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  stepBtn: { width: 36, height: 36, borderRadius: 8, backgroundColor: colors.bgInset, alignItems: 'center', justifyContent: 'center' },
   stepText: { fontSize: 20, color: colors.titaniumMid },
-  stepVal: { fontSize: 20, fontWeight: '500', color: colors.titanium, minWidth: 40, textAlign: 'center' },
+  stepInputBox: { minWidth: 54, height: 36, borderRadius: 8, backgroundColor: colors.bgInset, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  stepInput: { fontSize: 18, fontWeight: '500', color: colors.titanium, textAlign: 'center', minWidth: 40, padding: 0 },
   addBtn: { backgroundColor: colors.titanium, borderRadius: radius.md, padding: spacing.md, alignItems: 'center', marginBottom: spacing.sm },
   addBtnText: { fontSize: 15, fontWeight: '500', color: colors.bg },
   cancelBtn: { padding: spacing.sm, alignItems: 'center' },

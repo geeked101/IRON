@@ -1,7 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet
+  TextInput, StyleSheet
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, spacing, radius, typography } from '../../theme'
@@ -45,16 +45,56 @@ function PrimBtn({ label, onPress }: { label: string; onPress: () => void }) {
   )
 }
 
-function Stepper({ label, value, unit, onDec, onInc }: {
-  label: string; value: string | number; unit: string; onDec: () => void; onInc: () => void
+function Stepper({ label, value, unit, onDec, onInc, onChange }: {
+  label: string
+  value: string | number
+  unit: string
+  onDec: () => void
+  onInc: () => void
+  onChange?: (val: number) => void
 }) {
+  const [text, setText] = useState(String(value))
+
+  useEffect(() => {
+    setText(String(value))
+  }, [value])
+
+  const handleBlur = () => {
+    const parsed = parseFloat(text)
+    if (!isNaN(parsed) && parsed > 0 && onChange) {
+      onChange(parsed)
+    } else {
+      setText(String(value))
+    }
+  }
+
   return (
     <View style={ob.stepperRow}>
       <Text style={ob.stepperLabel}>{label}</Text>
       <View style={ob.stepperRight}>
-        <TouchableOpacity style={ob.stepBtn} onPress={onDec}><Text style={ob.stepBtnText}>−</Text></TouchableOpacity>
-        <Text style={ob.stepVal}>{value}<Text style={ob.stepUnit}> {unit}</Text></Text>
-        <TouchableOpacity style={ob.stepBtn} onPress={onInc}><Text style={ob.stepBtnText}>+</Text></TouchableOpacity>
+        <TouchableOpacity style={ob.stepBtn} onPress={onDec} activeOpacity={0.7}>
+          <Text style={ob.stepBtnText}>−</Text>
+        </TouchableOpacity>
+        <View style={ob.stepInputContainer}>
+          <TextInput
+            style={ob.stepInput}
+            value={text}
+            onChangeText={(t) => {
+              setText(t)
+              const num = parseFloat(t)
+              if (!isNaN(num) && onChange) {
+                onChange(num)
+              }
+            }}
+            onBlur={handleBlur}
+            keyboardType="decimal-pad"
+            selectTextOnFocus
+          />
+          <Text style={ob.stepUnit}>{unit}</Text>
+        </View>
+        <TouchableOpacity style={ob.stepBtn} onPress={onInc} activeOpacity={0.7}>
+          <Text style={ob.stepBtnText}>+</Text>
+        </TouchableOpacity>
       </View>
     </View>
   )
@@ -83,11 +123,12 @@ const ob = StyleSheet.create({
   card: { backgroundColor: colors.bgCard, borderWidth: 0.5, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm },
   stepperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.md, borderBottomWidth: 0.5, borderBottomColor: colors.bgInset },
   stepperLabel: { fontSize: 14, color: colors.textPrimary },
-  stepperRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  stepBtn: { width: 34, height: 34, borderRadius: 9, backgroundColor: colors.bgDeep, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  stepperRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  stepBtn: { width: 36, height: 36, borderRadius: 9, backgroundColor: colors.bgDeep, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   stepBtnText: { fontSize: 20, color: colors.titaniumMid, lineHeight: 24 },
-  stepVal: { fontSize: 20, fontWeight: '500', color: colors.titanium, minWidth: 70, textAlign: 'center' },
-  stepUnit: { fontSize: 13, color: colors.textMuted },
+  stepInputContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', minWidth: 80, backgroundColor: colors.bgDeep, borderWidth: 0.5, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.sm, height: 36 },
+  stepInput: { fontSize: 16, fontWeight: '500', color: colors.titanium, textAlign: 'center', minWidth: 40, padding: 0 },
+  stepUnit: { fontSize: 12, color: colors.textMuted, marginLeft: 2 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: colors.bgInset },
 })
 
@@ -194,9 +235,30 @@ export function StatsScreen({ navigation }: any) {
         <Text style={ob.title}>Your stats.</Text>
         <Text style={ob.sub}>Used to calculate your daily targets.</Text>
         <View style={ob.card}>
-          <Stepper label="Body weight" value={weight} unit={unit} onDec={() => setWeight(w => Math.max(30, parseFloat((w - 0.5).toFixed(1))))} onInc={() => setWeight(w => parseFloat((w + 0.5).toFixed(1)))} />
-          <Stepper label="Height" value={height} unit="cm" onDec={() => setHeight(h => Math.max(100, h - 1))} onInc={() => setHeight(h => h + 1)} />
-          <Stepper label="Age" value={age} unit="yr" onDec={() => setAge(a => Math.max(16, a - 1))} onInc={() => setAge(a => a + 1)} />
+          <Stepper
+            label="Body weight"
+            value={weight}
+            unit={unit}
+            onDec={() => setWeight(w => Math.max(30, parseFloat((w - 0.5).toFixed(1))))}
+            onInc={() => setWeight(w => parseFloat((w + 0.5).toFixed(1)))}
+            onChange={v => setWeight(Math.max(20, Math.min(300, v)))}
+          />
+          <Stepper
+            label="Height"
+            value={height}
+            unit="cm"
+            onDec={() => setHeight(h => Math.max(100, h - 1))}
+            onInc={() => setHeight(h => h + 1)}
+            onChange={v => setHeight(Math.max(50, Math.min(250, Math.round(v))))}
+          />
+          <Stepper
+            label="Age"
+            value={age}
+            unit="yr"
+            onDec={() => setAge(a => Math.max(16, a - 1))}
+            onInc={() => setAge(a => a + 1)}
+            onChange={v => setAge(Math.max(10, Math.min(100, Math.round(v))))}
+          />
         </View>
         <View style={ob.card}>
           <Text style={[ob.label, { marginBottom: spacing.sm }]}>UNITS</Text>
@@ -243,8 +305,22 @@ export function TargetsScreen({ navigation }: any) {
           </Text>
         </View>
         <View style={ob.card}>
-          <Stepper label="Protein" value={protein} unit="g" onDec={() => setProtein(p => Math.max(50, p - 5))} onInc={() => setProtein(p => p + 5)} />
-          <Stepper label="Water" value={water.toFixed(1)} unit="L" onDec={() => setWater(w => Math.max(1, parseFloat((w - 0.5).toFixed(1))))} onInc={() => setWater(w => parseFloat((w + 0.5).toFixed(1)))} />
+          <Stepper
+            label="Protein"
+            value={protein}
+            unit="g"
+            onDec={() => setProtein(p => Math.max(50, p - 5))}
+            onInc={() => setProtein(p => p + 5)}
+            onChange={v => setProtein(Math.max(20, Math.min(500, Math.round(v))))}
+          />
+          <Stepper
+            label="Water"
+            value={water.toFixed(1)}
+            unit="L"
+            onDec={() => setWater(w => Math.max(1, parseFloat((w - 0.5).toFixed(1))))}
+            onInc={() => setWater(w => parseFloat((w + 0.5).toFixed(1)))}
+            onChange={v => setWater(Math.max(0.5, Math.min(15, parseFloat(v.toFixed(1)))))}
+          />
         </View>
       </View>
       <View style={{ paddingHorizontal: spacing.lg, paddingBottom: insets.bottom + spacing.lg }}>
