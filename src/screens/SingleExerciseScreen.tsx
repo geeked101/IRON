@@ -13,7 +13,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, Vibration, Platform,
+  StyleSheet, Vibration, Platform, TextInput,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Haptics from 'expo-haptics'
@@ -241,14 +241,23 @@ export default function SingleExerciseScreen({ route, navigation }: any) {
                 <View style={{ alignItems: 'center' }}>
                   <Text style={[s.adjLabel, { fontSize: f.label }]}>Weight</Text>
                   <View style={s.adjControls}>
-                    <TouchableOpacity style={s.adjBtn} onPress={() => setCurWeight(w => Math.max(0, parseFloat((w - 2.5).toFixed(1))))}>
+                    <TouchableOpacity style={s.adjBtn} onPress={() => setCurWeight(w => Math.max(0, parseFloat((w - 2.5).toFixed(1))))} activeOpacity={0.7}>
                       <Text style={s.adjBtnText}>−</Text>
                     </TouchableOpacity>
-                    <View style={{ alignItems: 'center', minWidth: 72 }}>
-                      <Text style={[s.adjVal, { fontSize: f.bigNum }]}>{curWeight}</Text>
+                    <View style={s.adjInputBox}>
+                      <TextInput
+                        style={[s.adjInput, { fontSize: f.bigNum }]}
+                        value={String(curWeight)}
+                        onChangeText={(t) => {
+                          const n = parseFloat(t)
+                          if (!isNaN(n) && n >= 0) setCurWeight(n)
+                        }}
+                        keyboardType="decimal-pad"
+                        selectTextOnFocus
+                      />
                       <Text style={[s.adjUnit, { fontSize: f.small }]}>kg</Text>
                     </View>
-                    <TouchableOpacity style={s.adjBtn} onPress={() => setCurWeight(w => parseFloat((w + 2.5).toFixed(1)))}>
+                    <TouchableOpacity style={s.adjBtn} onPress={() => setCurWeight(w => parseFloat((w + 2.5).toFixed(1)))} activeOpacity={0.7}>
                       <Text style={s.adjBtnText}>+</Text>
                     </TouchableOpacity>
                   </View>
@@ -257,14 +266,23 @@ export default function SingleExerciseScreen({ route, navigation }: any) {
                 <View style={{ alignItems: 'center' }}>
                   <Text style={[s.adjLabel, { fontSize: f.label }]}>Reps</Text>
                   <View style={s.adjControls}>
-                    <TouchableOpacity style={s.adjBtn} onPress={() => setCurReps(r => Math.max(1, r - 1))}>
+                    <TouchableOpacity style={s.adjBtn} onPress={() => setCurReps(r => Math.max(1, r - 1))} activeOpacity={0.7}>
                       <Text style={s.adjBtnText}>−</Text>
                     </TouchableOpacity>
-                    <View style={{ alignItems: 'center', minWidth: 72 }}>
-                      <Text style={[s.adjVal, { fontSize: f.bigNum }]}>{curReps}</Text>
+                    <View style={s.adjInputBox}>
+                      <TextInput
+                        style={[s.adjInput, { fontSize: f.bigNum }]}
+                        value={String(curReps)}
+                        onChangeText={(t) => {
+                          const n = parseInt(t, 10)
+                          if (!isNaN(n) && n > 0) setCurReps(n)
+                        }}
+                        keyboardType="number-pad"
+                        selectTextOnFocus
+                      />
                       <Text style={[s.adjUnit, { fontSize: f.small }]}>reps</Text>
                     </View>
-                    <TouchableOpacity style={s.adjBtn} onPress={() => setCurReps(r => r + 1)}>
+                    <TouchableOpacity style={s.adjBtn} onPress={() => setCurReps(r => r + 1)} activeOpacity={0.7}>
                       <Text style={s.adjBtnText}>+</Text>
                     </TouchableOpacity>
                   </View>
@@ -397,9 +415,10 @@ const s = StyleSheet.create({
   adjRow: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: colors.bgCard, borderWidth: 0.5, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.sm },
   adjLabel: { color: colors.textMuted, letterSpacing: 1, marginBottom: spacing.sm },
   adjControls: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  adjBtn: { width: 52, height: 52, borderRadius: radius.sm, backgroundColor: colors.bgDeep, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  adjBtnText: { fontSize: 26, color: colors.titaniumMid, lineHeight: 30 },
-  adjVal: { fontWeight: '500', color: colors.titanium },
+  adjBtn: { width: 44, height: 44, borderRadius: radius.sm, backgroundColor: colors.bgDeep, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  adjBtnText: { fontSize: 24, color: colors.titaniumMid, lineHeight: 28 },
+  adjInputBox: { alignItems: 'center', justifyContent: 'center', minWidth: 68, backgroundColor: colors.bgDeep, borderWidth: 0.5, borderColor: colors.border, borderRadius: radius.sm, paddingVertical: 4, paddingHorizontal: 6 },
+  adjInput: { fontWeight: '500', color: colors.titanium, textAlign: 'center', minWidth: 44, padding: 0 },
   adjUnit: { color: colors.textMuted },
   adjDivider: { width: 0.5, backgroundColor: colors.border },
   insightCard: { borderWidth: 0.5, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
