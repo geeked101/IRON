@@ -1,7 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity,
-  Switch, StyleSheet, Alert
+  Switch, StyleSheet, Alert, TextInput
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, spacing, radius, typography } from '../theme'
@@ -18,6 +18,84 @@ function Row({ label, value, onPress }: { label: string; value?: string; onPress
       <Text style={s.rowLabel}>{label}</Text>
       <Text style={s.rowVal}>{value ?? '—'}</Text>
     </TouchableOpacity>
+  )
+}
+
+function EditableNumRow({
+  label,
+  value,
+  unit,
+  step = 1,
+  min = 1,
+  max = 9999,
+  isDecimal = false,
+  onChange,
+}: {
+  label: string
+  value: number
+  unit: string
+  step?: number
+  min?: number
+  max?: number
+  isDecimal?: boolean
+  onChange: (val: number) => void
+}) {
+  const [text, setText] = useState(isDecimal ? value.toFixed(1) : String(value))
+
+  useEffect(() => {
+    setText(isDecimal ? value.toFixed(1) : String(value))
+  }, [value, isDecimal])
+
+  const commitValue = (num: number) => {
+    const clamped = Math.max(min, Math.min(max, isDecimal ? parseFloat(num.toFixed(1)) : Math.round(num)))
+    setText(isDecimal ? clamped.toFixed(1) : String(clamped))
+    onChange(clamped)
+  }
+
+  return (
+    <View style={s.row}>
+      <Text style={s.rowLabel}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+        <TouchableOpacity
+          style={s.stepBtn}
+          onPress={() => commitValue(value - step)}
+          activeOpacity={0.7}
+        >
+          <Text style={s.stepBtnText}>−</Text>
+        </TouchableOpacity>
+        <View style={s.inputContainer}>
+          <TextInput
+            style={s.rowInput}
+            value={text}
+            onChangeText={(t) => {
+              setText(t)
+              const parsed = parseFloat(t)
+              if (!isNaN(parsed) && parsed >= min && parsed <= max) {
+                onChange(isDecimal ? parseFloat(parsed.toFixed(1)) : Math.round(parsed))
+              }
+            }}
+            onBlur={() => {
+              const parsed = parseFloat(text)
+              if (isNaN(parsed) || parsed < min || parsed > max) {
+                setText(isDecimal ? value.toFixed(1) : String(value))
+              } else {
+                commitValue(parsed)
+              }
+            }}
+            keyboardType="decimal-pad"
+            selectTextOnFocus
+          />
+          <Text style={s.inputUnit}>{unit}</Text>
+        </View>
+        <TouchableOpacity
+          style={s.stepBtn}
+          onPress={() => commitValue(value + step)}
+          activeOpacity={0.7}
+        >
+          <Text style={s.stepBtnText}>+</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   )
 }
 
@@ -127,13 +205,11 @@ export default function SettingsScreen({ navigation }: any) {
     await saveProfile()
   }
 
-  async function handleWeightChange(delta: number) {
-    const current = profile?.weight ?? 70
-    const next = Math.max(30, Math.min(200, parseFloat((current + delta).toFixed(1))))
-    setProfile({ weight: next })
+  async function handleWeightChange(newWeight: number) {
+    setProfile({ weight: newWeight })
     // Recalculate targets
     const targets = calculateCaloricTarget(
-      next,
+      newWeight,
       profile?.height ?? 175,
       profile?.age ?? 22,
       profile?.goal ?? 'lean-bulk',
@@ -275,30 +351,83 @@ export default function SettingsScreen({ navigation }: any) {
         {/* BODY STATS */}
         <SectionHeader title="BODY STATS" />
         <View style={s.card}>
-          <View style={s.row}>
-            <Text style={s.rowLabel}>Body weight</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-              <TouchableOpacity style={s.stepBtn} onPress={() => handleWeightChange(-0.5)}>
-                <Text style={s.stepBtnText}>−</Text>
-              </TouchableOpacity>
-              <Text style={s.rowVal}>{profile?.weight ?? 70} {profile?.units ?? 'kg'}</Text>
-              <TouchableOpacity style={s.stepBtn} onPress={() => handleWeightChange(0.5)}>
-                <Text style={s.stepBtnText}>+</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          <Row label="Height" value={`${profile?.height ?? 175} cm`} />
-          <Row label="Age" value={`${profile?.age ?? 22}`} />
-          <Row label="Gender" value={profile?.gender === 'female' ? 'Female' : 'Male'} />
+          <EditableNumRow
+            label="Body weight"
+            value={profile?.weight ?? 54}
+            unit="kg"
+            step={0.5}
+            min={20}
+            max={300}
+            isDecimal={true}
+            onChange={handleWeightChange}
+          />
+          <EditableNumRow
+            label="Height"
+            value={profile?.height ?? 172}
+            unit="cm"
+            step={1}
+            min={50}
+            max={250}
+            onChange={(val) => {
+              setProfile({ height: val })
+              saveProfile()
+            }}
+          />
+          <EditableNumRow
+            label="Age"
+            value={profile?.age ?? 22}
+            unit="yr"
+            step={1}
+            min={10}
+            max={100}
+            onChange={(val) => {
+              setProfile({ age: val })
+              saveProfile()
+            }}
+          />
           <Row label="Units" value={profile?.units === 'lb' ? 'LBS' : 'KG'} />
         </View>
 
         {/* TARGETS */}
         <SectionHeader title="DAILY TARGETS" />
         <View style={s.card}>
-          <Row label="Calories" value={`${profile?.targetCalories ?? 2700} kcal`} />
-          <Row label="Protein" value={`${profile?.targetProtein ?? 110}g`} />
-          <Row label="Water" value={`${(profile?.targetWater ?? 4.0).toFixed(1)} L`} />
+          <EditableNumRow
+            label="Calories"
+            value={profile?.targetCalories ?? 2700}
+            unit="kcal"
+            step={50}
+            min={500}
+            max={10000}
+            onChange={(val) => {
+              setProfile({ targetCalories: val })
+              saveProfile()
+            }}
+          />
+          <EditableNumRow
+            label="Protein"
+            value={profile?.targetProtein ?? 110}
+            unit="g"
+            step={5}
+            min={10}
+            max={500}
+            onChange={(val) => {
+              setProfile({ targetProtein: val })
+              saveProfile()
+            }}
+          />
+          <EditableNumRow
+            label="Water"
+            value={profile?.targetWater ?? 4.0}
+            unit="L"
+            step={0.5}
+            min={0.5}
+            max={15}
+            isDecimal={true}
+            onChange={(val) => {
+              setProfile({ targetWater: val })
+              saveProfile()
+            }}
+          />
           <TouchableOpacity
             style={[s.recalcBtn]}
             onPress={() => {
@@ -315,7 +444,7 @@ export default function SettingsScreen({ navigation }: any) {
               Alert.alert('Targets updated', `Calories: ${t.calories} kcal\nProtein: ${t.protein}g`)
             }}
           >
-            <Text style={s.recalcText}>Recalculate targets</Text>
+            <Text style={s.recalcText}>Auto-calculate from stats</Text>
           </TouchableOpacity>
         </View>
 
@@ -496,8 +625,11 @@ const s = StyleSheet.create({
   rowSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   rowVal: { fontSize: 14, color: colors.titaniumMid },
 
-  stepBtn: { width: 28, height: 28, borderRadius: 7, backgroundColor: colors.bgDeep, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  stepBtn: { width: 30, height: 30, borderRadius: 7, backgroundColor: colors.bgDeep, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   stepBtnText: { fontSize: 18, color: colors.titaniumMid, lineHeight: 22 },
+  inputContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgDeep, borderWidth: 0.5, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 6, height: 30, minWidth: 64 },
+  rowInput: { fontSize: 13, fontWeight: '500', color: colors.titanium, textAlign: 'center', minWidth: 32, padding: 0 },
+  inputUnit: { fontSize: 11, color: colors.textMuted, marginLeft: 2 },
 
   recalcBtn: { padding: spacing.md, alignItems: 'center' },
   recalcText: { fontSize: 13, color: colors.titaniumMid },

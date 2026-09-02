@@ -1,172 +1,120 @@
-# IRON
+#  IRON
 
-Digital lifting journal and progression system built with React Native and Expo.
+Your personal gym tracker and trainer — a mobile app that keeps you accountable, pushes your limits, and tracks every rep that counts.
 
-## Overview
+**IRON** is a React Native + Firebase mobile app designed to help you nail progressive overload, log nutrition, track your physique journey, and stay motivated. Built for people serious about their gains.
 
-IRON is a mobile application designed for workout tracking, progressive overload management, nutrition logging, and physique tracking. It uses a 6-day sequential workout cycle with rest day prompts, offline-first local state persistence, and optional Firestore synchronization.
+---
+
+## What You Get
+
+- **Workout Tracking**: Follow a structured 6-day cycle (PPL split) with real-time set logging and form cues
+- **Progressive Overload Engine**: Automatic 1RM calculations and smart weight recommendations to keep pushing harder
+- **Nutrition Logging**: Log meals, track macros, and hit your daily targets with a built-in food database
+- **Physique Progress**: Photo gallery to visually track your transformation over time
+- **Recovery Insights**: Rest day metrics and guided stretching routines
+- **Personal Records**: Celebrate PRs with automatic detection and celebratory alerts
+- **Custom Font Scaling**: Adjust text size across the entire app to your preference
+
+---
 
 ## Tech Stack
 
-| Layer | Technology |
+| Layer | Tech |
 |---|---|
-| Framework | React Native (Expo SDK 54) |
-| Language | TypeScript |
-| Navigation | React Navigation v6 (Stack + Bottom Tabs) |
-| State Management | Zustand + AsyncStorage |
-| Backend & Database | Firebase (Auth + Firestore) |
-| UI & Visuals | Vanilla React Native StyleSheet + Custom Theme System |
-| Notifications | Expo Notifications |
+| **Framework** | React Native (Expo SDK 54) |
+| **Language** | TypeScript |
+| **Navigation** | React Navigation v6 |
+| **State Management** | Zustand + AsyncStorage |
+| **Backend** | Firebase (Auth + Firestore) |
+| **UI** | React Native StyleSheet + Custom Theme |
+| **Notifications** | Expo Notifications |
 
-## Directory Structure
+---
 
-```
-IRON/
-├── App.tsx                          # Application root entry point
-├── app.config.js                    # Expo configuration with env variable mapping
-├── eas.json                         # EAS build profiles (development, preview, production)
-├── src/
-│   ├── components/                  # UI components and interactive visualizers
-│   │   ├── AddCustomFoodModal.tsx   # Custom food entry with live macro ratio bar
-│   │   ├── BreathingRestTimer.tsx   # Rest timer with animated halo pulse
-│   │   ├── GoogleSignInButton.tsx   # Google auth & local SQLite cloud sync button
-│   │   ├── MuscleHeatmap.tsx        # Interactive muscle fatigue & recovery heatmap
-│   │   ├── PRCelebrationModal.tsx   # Personal record modal celebration
-│   │   └── ShimmerGlow.tsx          # Metallic shine sweep animation component
-│   ├── context/
-│   │   └── FontSizeContext.tsx      # App-wide text scale provider
-│   ├── data/
-│   │   ├── kenyaFoods.ts            # Local food catalog with macro breakdowns
-│   │   └── workoutSplit.ts          # PPL split definitions and exercise metadata
-│   ├── hooks/
-│   │   └── useScaledFont.ts         # Hook for typography scaling
-│   ├── navigation/
-│   │   ├── OnboardingNavigator.tsx  # Initial user setup stack navigator
-│   │   └── RootNavigator.tsx        # Root navigation stack and tab router
-│   ├── screens/
-│   │   ├── DayExerciseListScreen.tsx # Day exercise selection and completion tracker
-│   │   ├── EditSplitScreen.tsx      # Custom split & exercise configuration
-│   │   ├── HomeScreen.tsx           # Dashboard, workout queue status, daily macros
-│   │   ├── NutritionScreen.tsx      # Calorie and macro logger
-│   │   ├── PhotoDetailScreen.tsx    # Fullscreen progress photo view
-│   │   ├── PhotoProgressScreen.tsx  # Physique progress photo gallery
-│   │   ├── ProgressScreen.tsx       # Analytics, strength 1RM, and weight charts
-│   │   ├── RecoveryScreen.tsx       # Rest day metrics, stretch routine, cycle progression
-│   │   ├── SessionStatsScreen.tsx   # Post-workout summary and PR detection
-│   │   ├── SettingsScreen.tsx       # Preferences, cloud account management, and export
-│   │   ├── SingleExerciseScreen.tsx # Exercise set logger and form cues
-│   │   ├── WorkoutScreen.tsx        # Active split view & workout starting screen
-│   │   └── onboarding/              # Multi-step onboarding and account recovery
-│   ├── services/
-│   │   ├── firebase.ts              # Firestore & Auth service with null-safety checks
-│   │   ├── localDb.ts               # SQLite persistence layer for offline storage
-│   │   ├── notifications.ts         # Local notification scheduling service
-│   │   └── syncEngine.ts            # Background offline sync queue processor
-│   ├── store/
-│   │   ├── customFoodStore.ts       # Custom user food items store
-│   │   ├── index.ts                 # Auth and User Profile Zustand stores
-│   │   ├── queueStore.ts            # Sequential workout queue state machine
-│   │   └── splitStore.ts            # Custom user workout split store
-│   ├── theme/
-│   │   └── index.ts                 # Titanium dark design tokens
-│   └── utils/
-│       ├── progressiveOverload.ts   # 1RM calculation and progression logic
-│       └── validation.ts            # Form and payload validation utilities
-```
-
-## Getting Started
+## Quick Start
 
 ### Prerequisites
-
-- Node.js (v18 or newer recommended)
+- Node.js v18+
 - npm or yarn
-- Expo Go mobile app (for device testing)
+- Expo Go app (for testing on your phone)
 
-### Installation
+### Setup
 
-1. Clone the repository:
+1. **Clone and install:**
    ```bash
    git clone git@github.com:geeked101/IRON.git
    cd IRON
-   ```
-
-2. Install dependencies:
-   ```bash
    npm install
    ```
 
-3. Environment Setup (Optional for cloud sync):
-   Copy `.env.example` to `.env` and set your Firebase configuration keys:
+2. **Set up Firebase (optional for cloud sync):**
    ```bash
    cp .env.example .env
+   # Add your Firebase keys
    ```
-   If `.env` is omitted, the application operates in local offline mode using `AsyncStorage`.
+   *(Skip this for offline-only mode)*
 
-4. Start the Metro bundler:
+3. **Run it:**
    ```bash
    npx expo start
    ```
 
-## Key Modules
+---
 
-### Sequential Workout Queue
-Centralized in `src/store/queueStore.ts`. Tracks workout progression through a 6-day sequential cycle regardless of calendar days. Completing Day 6 triggers a rest prompt before advancing to Day 7 (Recovery) or rolling over to Day 1 of the next cycle.
+## Project Structure
 
-### Progressive Overload Engine
-Implemented in `src/utils/progressiveOverload.ts`. Calculates estimated 1RM using the Brzycki formula and evaluates set performance against target reps to suggest weight adjustments (+2.5kg increment on completion or deload adjustments).
-
-### Dynamic Font Scaling
-Managed via `src/context/FontSizeContext.tsx` and consumed through `useScaledFont()`. Allows users to adjust text scaling (Small, Medium, Large, Extra Large) across all screens dynamically.
-
-### Security Architecture
-
-1. **Environment Variables**: API keys and backend project configuration are loaded from environment variables (`EXPO_PUBLIC_FIREBASE_*`) and ignored by `.gitignore`.
-2. **Authentication Isolation**: Authentication uses Firebase Anonymous Auth or user identity. Each user is isolated by `uid`.
-3. **Firestore Security Rules**: Deploy the following rules to secure document access by user ID:
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
-    }
-    match /sessions/{docId} {
-      allow read, write: if request.auth != null && request.auth.uid == resource.data.uid;
-      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
-    }
-    match /weightLogs/{docId} {
-      allow read, write: if request.auth != null && request.auth.uid == resource.data.uid;
-      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
-    }
-    match /nutrition/{docId} {
-      allow read, write: if request.auth != null && request.auth.uid == resource.data.uid;
-      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
-    }
-    match /prs/{docId} {
-      allow read, write: if request.auth != null && request.auth.uid == resource.data.uid;
-      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
-    }
-  }
-}
+```
+IRON/
+├── App.tsx                    # App entry point
+├── src/
+│   ├── components/           # UI building blocks (timers, modals, heatmaps)
+│   ├── screens/             # Full app pages (Home, Workout, Nutrition, Progress, etc.)
+│   ├── store/               # State management (auth, workouts, custom foods)
+│   ├── services/            # Firebase + notifications
+│   ├── utils/               # Progressive overload calculations
+│   ├── data/                # Workout splits & food database
+│   └── theme/               # Design tokens (dark titanium theme)
 ```
 
-## Build and Deployment
+---
 
-### Development Build
+## Key Features Explained
+
+### Sequential Workout Queue
+Never wonder what workout's next. IRON tracks your position in a 6-day PPL cycle, independent of calendar days. Finish Day 6 → rest day prompt → start Day 1 fresh.
+
+### Progressive Overload Engine
+Uses the Brzycki formula to calculate your 1RM and automatically suggests weight increases (+2.5kg) when you hit your target reps. Built-in progression tracking keeps you accountable.
+
+### Dynamic Font Scaling
+Users can adjust text size (Small → Extra Large) in settings, and every screen respects that choice instantly.
+
+---
+
+## Security
+
+- **Auth Isolation**: Each user's data is isolated by their Firebase UID
+- **Firestore Rules**: All collections (`users`, `sessions`, `nutrition`, `prs`, etc.) enforce user-level read/write permissions
+- **Environment Variables**: Secrets stay in `.env` and out of version control
+
+---
+
+## Build & Deploy
+
+### Development
 ```bash
 npx expo run:android
 ```
 
-### Production Build via EAS
+### Production (via EAS)
 ```bash
-# Install EAS CLI
 npm install -g eas-cli
-
-# Build Android APK
 eas build --platform android --profile preview
 ```
 
+---
+
 ## License
 
-MIT License.
+MIT License — build something awesome! 
