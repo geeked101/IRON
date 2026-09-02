@@ -2,6 +2,12 @@ import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app'
 import {
   getAuth,
   signInAnonymously,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  GoogleAuthProvider,
+  signInWithCredential,
+  signOut,
   onAuthStateChanged,
   User,
   Auth,
@@ -37,6 +43,7 @@ import {
   dbSaveCustomFood,
   dbGetCustomFoods,
   dbDeleteCustomFood,
+  dbQueueSyncItem,
 } from './localDb'
 
 /**
@@ -74,6 +81,8 @@ export function isFirebaseConfigured(): boolean {
 let app: FirebaseApp | null = null
 let auth: Auth | null = null
 
+let hasLoggedMissingEnvNotice = false
+
 /**
  * Initialise Firebase once. Safe to call multiple times — uses the existing
  * app instance if Firebase was already initialised.
@@ -81,10 +90,10 @@ let auth: Auth | null = null
  */
 export function initFirebase(): FirebaseApp | null {
   if (!isFirebaseConfigured()) {
-    console.error(
-      '[Firebase] Missing EXPO_PUBLIC_FIREBASE_* env vars. ' +
-      'For EAS builds run: eas env:push --environment preview --path .env'
-    )
+    if (!hasLoggedMissingEnvNotice) {
+      console.info('[Firebase] Running in offline-first mode (EXPO_PUBLIC_FIREBASE_* env vars not set).')
+      hasLoggedMissingEnvNotice = true
+    }
     return null
   }
 
@@ -138,6 +147,56 @@ export async function signInAnon(): Promise<User> {
 }
 
 /**
+ * Register a new user with email and password.
+ */
+export async function signUpWithEmail(email: string, pass: string): Promise<User> {
+  const firebaseAuth = getFirebaseAuth()
+  if (!firebaseAuth) throw new Error('Firebase is not configured.')
+  const { user } = await createUserWithEmailAndPassword(firebaseAuth, email, pass)
+  return user
+}
+
+/**
+ * Sign in an existing user with email and password.
+ */
+export async function signInWithEmail(email: string, pass: string): Promise<User> {
+  const firebaseAuth = getFirebaseAuth()
+  if (!firebaseAuth) throw new Error('Firebase is not configured.')
+  const { user } = await signInWithEmailAndPassword(firebaseAuth, email, pass)
+  return user
+}
+
+/**
+ * Send password reset email.
+ */
+export async function sendPasswordReset(email: string): Promise<void> {
+  const firebaseAuth = getFirebaseAuth()
+  if (!firebaseAuth) throw new Error('Firebase is not configured.')
+  await sendPasswordResetEmail(firebaseAuth, email)
+}
+
+/**
+ * Sign in using a Google ID token.
+ */
+export async function signInWithGoogleCredential(idToken: string): Promise<User> {
+  const firebaseAuth = getFirebaseAuth()
+  if (!firebaseAuth) throw new Error('Firebase is not configured.')
+  const credential = GoogleAuthProvider.credential(idToken)
+  const { user } = await signInWithCredential(firebaseAuth, credential)
+  return user
+}
+
+/**
+ * Sign out current user.
+ */
+export async function signOutUser(): Promise<void> {
+  const firebaseAuth = getFirebaseAuth()
+  if (firebaseAuth) {
+    await signOut(firebaseAuth)
+  }
+}
+
+/**
  * Subscribe to auth state changes. Returns the unsubscribe function.
  */
 export function listenAuthState(callback: (user: User | null) => void): () => void {
@@ -165,6 +224,13 @@ export interface UserProfile {
   units: 'kg' | 'lb'
   autoProgressiveOverload: boolean
   notifications: boolean
+  smartBulkInsights?: boolean
+  notificationPrefs?: {
+    workoutReminders?: boolean
+    proteinCheck?: boolean
+    hydrationNudge?: boolean
+    legDayReminder?: boolean
+  }
   createdAt: Timestamp | null
 }
 
@@ -180,9 +246,12 @@ export async function saveUserProfile(uid: string, profile: Partial<UserProfile>
     console.error('[LocalDB] Error saving user profile locally:', err)
   }
 
-  // 2. Sync to Firestore in background if available
+  // 2. Sync to Firestore in background if available, else queue for multi-device sync
   const db = getFirebaseDb()
-  if (!db) return
+  if (!db) {
+    dbQueueSyncItem(uid, 'profile', uid, profile)
+    return
+  }
   try {
     await setDoc(
       doc(db, 'users', uid),
@@ -190,7 +259,8 @@ export async function saveUserProfile(uid: string, profile: Partial<UserProfile>
       { merge: true },
     )
   } catch (err) {
-    console.warn('[Firebase] Background profile sync failed (offline?):', err)
+    console.warn('[Firebase] Background profile sync failed, queuing for sync:', err)
+    dbQueueSyncItem(uid, 'profile', uid, profile)
   }
 }
 
@@ -279,11 +349,15 @@ export async function saveCustomFood(uid: string, food: CustomFood): Promise<voi
 
   // 2. Sync to Firestore in background
   const db = getFirebaseDb()
-  if (!db) return
+  if (!db) {
+    dbQueueSyncItem(uid, 'custom_food', food.id, food)
+    return
+  }
   try {
     await setDoc(doc(db, 'users', uid, 'customFoods', food.id), food)
   } catch (err) {
-    console.warn('[Firebase] Custom food sync failed (offline?):', err)
+    console.warn('[Firebase] Custom food sync failed, queuing for sync:', err)
+    dbQueueSyncItem(uid, 'custom_food', food.id, food)
   }
 }
 
@@ -347,14 +421,18 @@ export async function saveWorkoutSession(session: Omit<WorkoutSession, 'id'>): P
 
   // 2. Sync to Firestore in background
   const db = getFirebaseDb()
-  if (db) {
-    addDoc(collection(db, 'sessions'), {
-      ...session,
-      loggedAt: serverTimestamp(),
-    }).catch(err => {
-      console.warn('[Firebase] Workout session sync failed (offline?):', err)
-    })
+  if (!db) {
+    dbQueueSyncItem(session.uid, 'session', localId, { ...session, id: localId })
+    return localId
   }
+  setDoc(doc(db, 'sessions', localId), {
+    ...session,
+    id: localId,
+    loggedAt: serverTimestamp(),
+  }).catch(err => {
+    console.warn('[Firebase] Workout session sync failed, queuing for sync:', err)
+    dbQueueSyncItem(session.uid, 'session', localId, { ...session, id: localId })
+  })
 
   return localId
 }
@@ -411,15 +489,19 @@ export async function logWeight(uid: string, weight: number): Promise<string> {
   }
 
   const db = getFirebaseDb()
-  if (db) {
-    addDoc(collection(db, 'weightLogs'), {
-      uid,
-      weight,
-      loggedAt: serverTimestamp(),
-    }).catch(err => {
-      console.warn('[Firebase] Weight log sync failed (offline?):', err)
-    })
+  if (!db) {
+    dbQueueSyncItem(uid, 'weight', localId, { uid, weight })
+    return localId
   }
+
+  addDoc(collection(db, 'weightLogs'), {
+    uid,
+    weight,
+    loggedAt: serverTimestamp(),
+  }).catch(err => {
+    console.warn('[Firebase] Weight log sync failed, queuing for sync:', err)
+    dbQueueSyncItem(uid, 'weight', localId, { uid, weight })
+  })
 
   return localId
 }
@@ -490,7 +572,10 @@ export async function saveNutritionLog(
   }
 
   const db = getFirebaseDb()
-  if (!db) return
+  if (!db) {
+    dbQueueSyncItem(uid, 'nutrition', date, { uid, date, ...data })
+    return
+  }
   try {
     await setDoc(
       doc(db, 'nutrition', `${uid}_${date}`),
@@ -498,7 +583,8 @@ export async function saveNutritionLog(
       { merge: true },
     )
   } catch (err) {
-    console.warn('[Firebase] Nutrition log sync failed (offline?):', err)
+    console.warn('[Firebase] Nutrition log sync failed, queuing for sync:', err)
+    dbQueueSyncItem(uid, 'nutrition', date, { uid, date, ...data })
   }
 }
 
@@ -583,7 +669,10 @@ export async function updatePR(
   }
 
   const db = getFirebaseDb()
-  if (!db) return
+  if (!db) {
+    dbQueueSyncItem(uid, 'pr', exercise.replace(/\s+/g, '_'), { exerciseName: exercise, weight, reps })
+    return
+  }
   try {
     await setDoc(
       doc(db, 'prs', `${uid}_${exercise.replace(/\s+/g, '_')}`),
@@ -591,7 +680,8 @@ export async function updatePR(
       { merge: true },
     )
   } catch (err) {
-    console.warn('[Firebase] PR sync failed (offline?):', err)
+    console.warn('[Firebase] PR sync failed, queuing for sync:', err)
+    dbQueueSyncItem(uid, 'pr', exercise.replace(/\s+/g, '_'), { exerciseName: exercise, weight, reps })
   }
 }
 

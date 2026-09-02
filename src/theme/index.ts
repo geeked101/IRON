@@ -1,50 +1,63 @@
 export const colors = {
   // Backgrounds
-  bg: '#0B0D12',
-  bgCard: '#161A22',
-  bgDeep: '#0f1117',
-  bgInset: '#1e2230',
+  bg: '#121212',
+  bgCard: '#1E1E1E',
+  bgActive: '#2A150C',
+  bgDeep: '#181818',
+  bgInset: '#242424',
 
-  // Titanium accents
-  titanium: '#C0C4CC',
-  titaniumMid: '#8B8F98',
-  titaniumDim: '#555',
-  titaniumFaint: '#3a3f4d',
+  // Brand Accents (Vibrant Electric Orange)
+  accent: '#FF3B00',
+  accentSecondary: '#FF5500',
+
+  // Titanium / Neutrals
+  titanium: '#FFFFFF',
+  titaniumMid: '#FF3B00',
+  titaniumDim: '#8E8E93',
+  titaniumFaint: '#3A3A3E',
 
   // Text
-  textPrimary: '#F5F7FA',
-  textSecondary: '#8B8F98',
-  textMuted: '#555',
-  textFaint: '#333',
+  textPrimary: '#FFFFFF',
+  textSecondary: '#8E8E93',
+  textMuted: '#8E8E93',
+  textFaint: '#555555',
 
   // Borders
-  border: '#1e2230',
-  borderMid: '#2a2f3d',
+  border: 'rgba(255, 255, 255, 0.08)',
+  borderMid: '#2A2A2E',
 
   // Semantic
-  green: '#4a9a44',
-  greenBg: '#1a2818',
-  greenBorder: '#2a4228',
-  greenText: '#a0d49c',
-  amber: '#c9a040',
-  amberBg: '#1a1200',
-  amberBorder: '#3a3200',
-  purple: '#7060c0',
-  purpleBg: '#100e18',
-  purpleBorder: '#2a2648',
-  purpleText: '#b0a0e0',
-  blue: '#378ADD',
-  red: '#c05050',
+  orange: '#FF3B00',
+  orangeBg: '#2A150C',
+  orangeBorder: '#FF3B00',
+  orangeText: '#FF5500',
+
+  green: '#34C759',
+  greenBg: '#132817',
+  greenBorder: '#34C759',
+  greenText: '#34C759',
+
+  amber: '#FF9500',
+  amberBg: '#2A1C0C',
+  amberBorder: '#FF9500',
+
+  purple: '#AF52DE',
+  purpleBg: '#200C2A',
+  purpleBorder: '#AF52DE',
+  purpleText: '#AF52DE',
+
+  blue: '#0A84FF',
+  red: '#FF453A',
 }
 
 export const typography = {
-  h1: { fontSize: 28, fontWeight: '500' as const, color: colors.textPrimary },
-  h2: { fontSize: 22, fontWeight: '500' as const, color: colors.textPrimary },
-  h3: { fontSize: 18, fontWeight: '500' as const, color: colors.textPrimary },
-  h4: { fontSize: 16, fontWeight: '500' as const, color: colors.textPrimary },
+  h1: { fontSize: 28, fontWeight: '700' as const, color: colors.textPrimary },
+  h2: { fontSize: 22, fontWeight: '700' as const, color: colors.textPrimary },
+  h3: { fontSize: 18, fontWeight: '700' as const, color: colors.textPrimary },
+  h4: { fontSize: 16, fontWeight: '600' as const, color: colors.textPrimary },
   body: { fontSize: 14, fontWeight: '400' as const, color: colors.textPrimary },
   small: { fontSize: 12, fontWeight: '400' as const, color: colors.textSecondary },
-  label: { fontSize: 11, fontWeight: '400' as const, color: colors.textMuted, letterSpacing: 1 },
+  label: { fontSize: 11, fontWeight: '500' as const, color: colors.textMuted, letterSpacing: 1 },
 }
 
 export const spacing = {
@@ -59,11 +72,24 @@ export const spacing = {
 export const radius = {
   sm: 8,
   md: 12,
-  lg: 14,
-  xl: 20,
+  lg: 16,
+  xl: 18,
   full: 999,
 }
 
 export const shadows = {
-  none: {},
+  none: {
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  subtle: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 2,
+  },
 }

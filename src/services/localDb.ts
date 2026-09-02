@@ -31,6 +31,17 @@ export function getLocalDb(): SQLite.SQLiteDatabase {
   return dbInstance
 }
 
+// In-memory caching layer for zero-latency queries on repeated reads
+const profileCache = new Map<string, UserProfile>()
+const prCache = new Map<string, PR[]>()
+const nutritionCache = new Map<string, NutritionLog>()
+
+export function clearLocalDbCache(): void {
+  profileCache.clear()
+  prCache.clear()
+  nutritionCache.clear()
+}
+
 /**
  * Initialize all required tables and indexes on application startup.
  */
@@ -40,6 +51,8 @@ export function initLocalDatabase(): void {
 
     db.execSync(`
       PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = NORMAL;
+      PRAGMA temp_store = MEMORY;
 
       CREATE TABLE IF NOT EXISTS user_profile (
         uid TEXT PRIMARY KEY,
@@ -73,6 +86,7 @@ export function initLocalDatabase(): void {
       );
 
       CREATE INDEX IF NOT EXISTS idx_sessions_uid_date ON workout_sessions(uid, logged_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_sessions_uid_day ON workout_sessions(uid, day);
 
       CREATE TABLE IF NOT EXISTS personal_records (
         id TEXT PRIMARY KEY,
@@ -84,6 +98,7 @@ export function initLocalDatabase(): void {
       );
 
       CREATE INDEX IF NOT EXISTS idx_prs_uid ON personal_records(uid);
+      CREATE INDEX IF NOT EXISTS idx_prs_uid_exercise ON personal_records(uid, exercise_name);
 
       CREATE TABLE IF NOT EXISTS weight_logs (
         id TEXT PRIMARY KEY,
@@ -121,11 +136,124 @@ export function initLocalDatabase(): void {
       );
 
       CREATE INDEX IF NOT EXISTS idx_custom_foods_uid ON custom_foods(uid);
+
+      CREATE TABLE IF NOT EXISTS sync_queue (
+        id TEXT PRIMARY KEY,
+        uid TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_sync_queue_uid ON sync_queue(uid);
     `)
 
-    console.log('[LocalDB] Database schema initialized successfully.')
+    console.log('[LocalDB] Database schema & performance indexes initialized.')
   } catch (error) {
     console.error('[LocalDB] Error initializing database schema:', error)
+  }
+}
+
+/**
+ * Migrate SQLite data from a temporary/previous UID to a new Firebase authenticated UID.
+ * Fixes data orphaned when switching from local_ device ID to Firebase anonymous UID.
+ */
+export function dbMigrateUserUid(oldUid: string, newUid: string): void {
+  if (!oldUid || !newUid || oldUid === newUid) return
+  try {
+    const db = getLocalDb()
+    db.runSync(`UPDATE OR IGNORE user_profile SET uid = ? WHERE uid = ?;`, [newUid, oldUid])
+    db.runSync(`UPDATE workout_sessions SET uid = ? WHERE uid = ?;`, [newUid, oldUid])
+    db.runSync(`UPDATE personal_records SET uid = ? WHERE uid = ?;`, [newUid, oldUid])
+    db.runSync(`UPDATE weight_logs SET uid = ? WHERE uid = ?;`, [newUid, oldUid])
+    db.runSync(`UPDATE nutrition_logs SET uid = ? WHERE uid = ?;`, [newUid, oldUid])
+    db.runSync(`UPDATE custom_foods SET uid = ? WHERE uid = ?;`, [newUid, oldUid])
+    clearLocalDbCache()
+    console.log(`[LocalDB] Successfully migrated SQLite data from ${oldUid} to ${newUid}`)
+  } catch (error) {
+    console.error('[LocalDB] Error migrating UID in SQLite:', error)
+  }
+}
+
+/**
+ * Reset all local database tables.
+ */
+export function dbResetAllData(): void {
+  try {
+    const db = getLocalDb()
+    db.runSync(`DELETE FROM user_profile;`)
+    db.runSync(`DELETE FROM workout_sessions;`)
+    db.runSync(`DELETE FROM personal_records;`)
+    db.runSync(`DELETE FROM weight_logs;`)
+    db.runSync(`DELETE FROM nutrition_logs;`)
+    db.runSync(`DELETE FROM custom_foods;`)
+    db.runSync(`DELETE FROM sync_queue;`)
+    clearLocalDbCache()
+    console.log('[LocalDB] All local database tables reset successfully.')
+  } catch (error) {
+    console.error('[LocalDB] Error resetting database:', error)
+  }
+}
+
+// ─── Sync Queue ──────────────────────────────────────────────────────────────
+
+export interface SyncQueueItem {
+  id: string
+  uid: string
+  entityType: 'session' | 'profile' | 'pr' | 'weight' | 'nutrition' | 'custom_food'
+  entityId: string
+  payloadJson: string
+  createdAt: string
+}
+
+export function dbQueueSyncItem(
+  uid: string,
+  entityType: SyncQueueItem['entityType'],
+  entityId: string,
+  payload: any
+): void {
+  try {
+    const db = getLocalDb()
+    const id = `sync_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+    const createdAt = new Date().toISOString()
+    db.runSync(
+      `INSERT INTO sync_queue (id, uid, entity_type, entity_id, payload_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?);`,
+      [id, uid, entityType, entityId, JSON.stringify(payload), createdAt]
+    )
+  } catch (err) {
+    console.error('[LocalDB] Error queuing sync item:', err)
+  }
+}
+
+export function dbGetPendingSyncItems(uid: string): SyncQueueItem[] {
+  try {
+    const db = getLocalDb()
+    const rows = db.getAllSync<any>(
+      `SELECT * FROM sync_queue WHERE uid = ? ORDER BY created_at ASC;`,
+      [uid]
+    )
+    return rows.map((r) => ({
+      id: r.id,
+      uid: r.uid,
+      entityType: r.entity_type,
+      entityId: r.entity_id,
+      payloadJson: r.payload_json,
+      createdAt: r.created_at,
+    }))
+  } catch (err) {
+    console.error('[LocalDB] Error fetching pending sync items:', err)
+    return []
+  }
+}
+
+export function dbRemoveSyncItem(id: string): void {
+  try {
+    const db = getLocalDb()
+    db.runSync(`DELETE FROM sync_queue WHERE id = ?;`, [id])
+  } catch (err) {
+    console.error('[LocalDB] Error deleting sync item:', err)
   }
 }
 
@@ -191,9 +319,14 @@ export function dbSaveUserProfile(profile: Partial<UserProfile> & { uid: string 
       finalProfile.updatedAt,
     ]
   )
+  profileCache.delete(profile.uid)
 }
 
 export function dbGetUserProfile(uid: string): UserProfile | null {
+  if (profileCache.has(uid)) {
+    return profileCache.get(uid)!
+  }
+
   const db = getLocalDb()
   const row = db.getFirstSync<any>(
     `SELECT * FROM user_profile WHERE uid = ? LIMIT 1;`,
@@ -202,7 +335,7 @@ export function dbGetUserProfile(uid: string): UserProfile | null {
 
   if (!row) return null
 
-  return {
+  const p: UserProfile = {
     uid: row.uid,
     goal: row.goal,
     level: row.level,
@@ -218,6 +351,9 @@ export function dbGetUserProfile(uid: string): UserProfile | null {
     notifications: row.notifications === 1,
     createdAt: row.created_at,
   }
+
+  profileCache.set(uid, p)
+  return p
 }
 
 /** Get the latest user profile saved on the device (useful on cold start when uid isn't known yet). */

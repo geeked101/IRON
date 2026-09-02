@@ -13,8 +13,8 @@
  *          │    ├─ DayExerciseList
  *          │    ├─ SingleExercise
  *          │    ├─ SessionStats
- *          │    ├─ ActiveWorkout
- *          │    └─ Recovery
+ *          │    ├─ Recovery
+ *          │    └─ EditSplit
  *          ├─ Nutrition
  *          ├─ Progress (stack)
  *          │    ├─ ProgressHome   ← main progress screen
@@ -41,13 +41,13 @@ import WorkoutScreen         from '../screens/WorkoutScreen'
 import DayExerciseListScreen from '../screens/DayExerciseListScreen'
 import SingleExerciseScreen  from '../screens/SingleExerciseScreen'
 import SessionStatsScreen    from '../screens/SessionStatsScreen'
-import ActiveWorkoutScreen   from '../screens/ActiveWorkoutScreen'
 import NutritionScreen       from '../screens/NutritionScreen'
 import ProgressScreen        from '../screens/ProgressScreen'
 import PhotoProgressScreen   from '../screens/PhotoProgressScreen'
 import PhotoDetailScreen     from '../screens/PhotoDetailScreen'
 import SettingsScreen        from '../screens/SettingsScreen'
 import RecoveryScreen        from '../screens/RecoveryScreen'
+import EditSplitScreen       from '../screens/EditSplitScreen'
 
 const Root          = createStackNavigator()
 const Tab           = createBottomTabNavigator()
@@ -101,8 +101,8 @@ function WorkoutStackNavigator() {
       <WorkoutStack.Screen name="DayExerciseList" component={DayExerciseListScreen} />
       <WorkoutStack.Screen name="SingleExercise"  component={SingleExerciseScreen} />
       <WorkoutStack.Screen name="SessionStats"    component={SessionStatsScreen} />
-      <WorkoutStack.Screen name="ActiveWorkout"   component={ActiveWorkoutScreen} />
       <WorkoutStack.Screen name="Recovery"        component={RecoveryScreen} />
+      <WorkoutStack.Screen name="EditSplit"       component={EditSplitScreen} />
     </WorkoutStack.Navigator>
   )
 }

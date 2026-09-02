@@ -27,6 +27,8 @@ import { calculateWorkoutStreak } from '../utils/progressiveOverload'
 import { useScaledFont } from '../hooks/useScaledFont'
 import ShimmerGlow from '../components/ShimmerGlow'
 
+import SyncBadge from '../components/SyncBadge'
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 /** Displays a single metric stat with optional progress bar. */
@@ -59,6 +61,7 @@ function StatCard({ value, label, unit, color, progress }: {
 
 interface RestDayModalProps {
   visible: boolean
+  cycleCount: number
   onRestDay: () => void
   onKeepGoing: () => void
 }
@@ -68,7 +71,7 @@ interface RestDayModalProps {
  * Offers "Yes — Rest Day" (insert Day 7 then cycle) or "No — Keep Going"
  * (advance straight to Day 1, increment cycle).
  */
-function RestDayModal({ visible, onRestDay, onKeepGoing }: RestDayModalProps) {
+function RestDayModal({ visible, cycleCount, onRestDay, onKeepGoing }: RestDayModalProps) {
   const slideAnim = useRef(new Animated.Value(300)).current
 
   useEffect(() => {
@@ -90,6 +93,8 @@ function RestDayModal({ visible, onRestDay, onKeepGoing }: RestDayModalProps) {
 
   if (!visible) return null
 
+  const nextCycle = cycleCount + 1
+
   return (
     <Modal transparent animationType="none" visible={visible} statusBarTranslucent>
       <Pressable style={styles.modalOverlay} onPress={onKeepGoing}>
@@ -108,7 +113,7 @@ function RestDayModal({ visible, onRestDay, onKeepGoing }: RestDayModalProps) {
             activeOpacity={0.8}
           >
             <Text style={styles.modalBtnPrimaryText}>Yes — Rest Day</Text>
-            <Text style={styles.modalBtnSub}>Queue Day 7, then start Cycle {'{n+1}'}</Text>
+            <Text style={styles.modalBtnSub}>Queue Day 7, then start Cycle {nextCycle}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -117,7 +122,7 @@ function RestDayModal({ visible, onRestDay, onKeepGoing }: RestDayModalProps) {
             activeOpacity={0.8}
           >
             <Text style={styles.modalBtnSecondaryText}>No — Keep Going</Text>
-            <Text style={[styles.modalBtnSub, { color: colors.titaniumMid }]}>Skip to Day 1, Cycle {'{n+1}'}</Text>
+            <Text style={[styles.modalBtnSub, { color: colors.titaniumMid }]}>Skip to Day 1, Cycle {nextCycle}</Text>
           </TouchableOpacity>
         </Animated.View>
       </Pressable>
@@ -231,11 +236,16 @@ export default function HomeScreen({ navigation }: any) {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View>
-            {/* Cycle + Day sub-header */}
-            <Text style={[styles.cycleLabel, { fontSize: f.label }]}>
-              Cycle {cycleCount} · Day {currentDay}
-            </Text>
+          <View style={{ flex: 1 }}>
+            {/* Cycle + Day sub-header + Streak */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <Text style={[styles.cycleLabel, { fontSize: f.label }]}>
+                Cycle {cycleCount} · Day {currentDay}
+              </Text>
+              <View style={styles.headerStreakBadge}>
+                <Text style={styles.headerStreakText}>🔥 {streakCount} Streak</Text>
+              </View>
+            </View>
             <Text style={[styles.greeting, { fontSize: f.h2 }]}>
               {isRestDay ? 'Recovery day.' : `${todayWorkout.name} day.`}
             </Text>
@@ -246,6 +256,17 @@ export default function HomeScreen({ navigation }: any) {
             </Text>
             <Text style={[styles.weightLabel, { fontSize: f.label }]}>body weight</Text>
           </View>
+        </View>
+
+        {/* Momentum & Forgiving Consistency Banner */}
+        <View style={styles.momentumBanner}>
+          <Text style={styles.momentumText}>
+            ⚡ {streakCount > 0 ? `${streakCount}-workout momentum! Keep pushing.` : "You're on track. Ready when you are."}
+          </Text>
+        </View>
+
+        <View style={{ paddingHorizontal: spacing.lg }}>
+          <SyncBadge />
         </View>
 
         {/* Calorie card */}
@@ -304,9 +325,11 @@ export default function HomeScreen({ navigation }: any) {
         {/* ── STATE (b): Session completed — show stats + Next Day button ─── */}
         {sessionCompleted && (
           <View style={styles.completedCard}>
-            <Text style={[styles.completedLabel, { fontSize: f.label }]}>SESSION COMPLETE</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <Text style={[styles.completedLabel, { fontSize: f.label, color: colors.green }]}>WORKOUT COMPLETE 💥</Text>
+            </View>
             <Text style={[styles.completedDay, { fontSize: f.h3 }]}>
-              {todayWorkout.name} · Day {currentDay} done ✓
+              {todayWorkout.name} · Day {currentDay} crushed ✓
             </Text>
             <TouchableOpacity
               style={styles.nextDayBtn}
@@ -314,7 +337,7 @@ export default function HomeScreen({ navigation }: any) {
               activeOpacity={0.85}
             >
               <Text style={[styles.nextDayBtnText, { fontSize: f.body + 1 }]}>
-                {pendingRestPrompt ? 'Rest day?' : 'Next Day →'}
+                {pendingRestPrompt ? 'Take Recovery Rest Day →' : `Unlock Day ${currentDay < 6 ? currentDay + 1 : 1} →`}
               </Text>
             </TouchableOpacity>
           </View>
@@ -361,7 +384,10 @@ export default function HomeScreen({ navigation }: any) {
               styles.dayCard,
               day.day === currentDay && styles.dayCardToday,
             ]}
-            onPress={() => navigation.navigate('Workout')}
+            onPress={() => navigation.navigate('Workout', {
+              screen: 'DayExerciseList',
+              params: { day: day.day },
+            })}
             activeOpacity={0.7}
           >
             <Text style={[styles.dayNum, { fontSize: f.label }]}>D{day.day}</Text>
@@ -383,6 +409,7 @@ export default function HomeScreen({ navigation }: any) {
       {/* Rest-day bottom-sheet */}
       <RestDayModal
         visible={showRestModal}
+        cycleCount={cycleCount}
         onRestDay={handleRestDay}
         onKeepGoing={handleKeepGoing}
       />
@@ -397,6 +424,10 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingTop: spacing.md, paddingBottom: spacing.md },
 
   cycleLabel: { color: colors.textMuted, letterSpacing: 1, marginBottom: 3 },
+  headerStreakBadge: { backgroundColor: colors.greenBg, borderWidth: 0.5, borderColor: colors.greenBorder, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 },
+  headerStreakText: { fontSize: 10, color: colors.green, fontWeight: '700' },
+  momentumBanner: { backgroundColor: colors.bgCard, borderWidth: 0.5, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginBottom: spacing.md },
+  momentumText: { fontSize: 12, color: colors.titaniumMid, fontWeight: '500' },
   greeting: { fontWeight: '500', color: colors.textPrimary },
 
   weightBox: { alignItems: 'flex-end' },

@@ -19,7 +19,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuthStore } from '../store/index'
 import { fetchRecentSessions, WorkoutSession, SetLog } from '../services/firebase'
-import { WORKOUT_SPLIT } from '../data/workoutSplit'
+import { WORKOUT_SPLIT, WorkoutDay, Exercise } from '../data/workoutSplit'
+import { useSplitStore } from '../store/splitStore'
 import { colors, spacing, radius } from '../theme'
 import { useScaledFont } from '../hooks/useScaledFont'
 
@@ -122,13 +123,14 @@ interface ExerciseCardProps {
   isDone: boolean
   lastWeight: string
   onPress: () => void
+  onSwap?: () => void
 }
 
 /**
- * Renders a single exercise row with name, target, last-session hint, and
- * a green checkmark/border when completed.
+ * Renders a single exercise row with name, target, last-session hint,
+ * 1-tap Swap control, and a green checkmark/border when completed.
  */
-function ExerciseCard({ exercise, isDone, lastWeight, onPress }: ExerciseCardProps) {
+function ExerciseCard({ exercise, isDone, lastWeight, onPress, onSwap }: ExerciseCardProps) {
   const f = useScaledFont()
   return (
     <TouchableOpacity
@@ -150,18 +152,32 @@ function ExerciseCard({ exercise, isDone, lastWeight, onPress }: ExerciseCardPro
           {exercise.targetSets} sets × {exercise.targetReps} reps
         </Text>
       </View>
-      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+      <View style={{ alignItems: 'flex-end', gap: 6 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {onSwap && !isDone && (
+            <TouchableOpacity
+              style={ec.swapBtn}
+              onPress={(e) => {
+                e.stopPropagation()
+                onSwap()
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={ec.swapBtnText}>Swap 🔄</Text>
+            </TouchableOpacity>
+          )}
+          {isDone ? (
+            <View style={ec.checkCircle}>
+              <Text style={ec.checkMark}>✓</Text>
+            </View>
+          ) : (
+            <View style={ec.arrowCircle}>
+              <Text style={ec.arrow}>›</Text>
+            </View>
+          )}
+        </View>
         {lastWeight !== '—' && (
           <Text style={[ec.lastWeight, { fontSize: f.small }]}>Last: {lastWeight}</Text>
-        )}
-        {isDone ? (
-          <View style={ec.checkCircle}>
-            <Text style={ec.checkMark}>✓</Text>
-          </View>
-        ) : (
-          <View style={ec.arrowCircle}>
-            <Text style={ec.arrow}>›</Text>
-          </View>
         )}
       </View>
     </TouchableOpacity>
@@ -185,6 +201,8 @@ const ec = StyleSheet.create({
   checkMark: { fontSize: 14, color: colors.green, fontWeight: '700' },
   arrowCircle: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.bgInset, alignItems: 'center', justifyContent: 'center' },
   arrow: { fontSize: 18, color: colors.titaniumMid, lineHeight: 22 },
+  swapBtn: { backgroundColor: colors.bgDeep, borderWidth: 0.5, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 4 },
+  swapBtnText: { fontSize: 11, color: colors.titaniumMid, fontWeight: '600' },
 })
 
 // ─── Main Screen ────────────────────────────────────────────────────────────────
@@ -195,12 +213,13 @@ export default function DayExerciseListScreen({ route, navigation }: any) {
   const f = useScaledFont()
   const { uid } = useAuthStore()
   const { day = 1 } = route.params ?? {}
+  const { split } = useSplitStore()
 
-  const workoutDay = WORKOUT_SPLIT.find(d => d.day === day) ?? WORKOUT_SPLIT[0]
+  const workoutDay = split.find((d: WorkoutDay) => d.day === day) ?? WORKOUT_SPLIT.find((d: WorkoutDay) => d.day === day) ?? WORKOUT_SPLIT[0]
 
   // ── Session state ──────────────────────────────────────────────────────────
   const [exercises, setExercises] = useState<SessionExercise[]>(
-    workoutDay.exercises.map(e => ({ ...e }))
+    workoutDay.exercises.map((e: Exercise) => ({ ...e }))
   )
   const [completedExercises, setCompletedExercises] = useState<Set<string>>(new Set())
   const [sessionSets, setSessionSets] = useState<Record<string, SetLog[]>>({})
@@ -262,6 +281,27 @@ export default function DayExerciseListScreen({ route, navigation }: any) {
       }
     }
     return '—'
+  }
+
+  /**
+   * Cycles through available exercise variants (original, homeVariant, swapOptions).
+   */
+  function handleSwapExercise(index: number) {
+    const targetEx = workoutDay.exercises[index]
+    if (!targetEx) return
+    const options = [
+      targetEx.name,
+      ...(targetEx.homeVariant ? [targetEx.homeVariant] : []),
+      ...(targetEx.swapOptions ?? []),
+    ]
+    if (options.length <= 1) return
+
+    setExercises(prev => prev.map((ex, i) => {
+      if (i !== index) return ex
+      const curIdx = options.indexOf(ex.name)
+      const nextIdx = (curIdx + 1) % options.length
+      return { ...ex, name: options[nextIdx] }
+    }))
   }
 
   /**
@@ -349,13 +389,14 @@ export default function DayExerciseListScreen({ route, navigation }: any) {
       >
         <Text style={[s.sectionLabel, { fontSize: f.label }]}>EXERCISES</Text>
 
-        {exercises.map((ex) => (
+        {exercises.map((ex, idx) => (
           <ExerciseCard
             key={ex.name}
             exercise={ex}
             isDone={completedExercises.has(ex.name)}
             lastWeight={getLastWeight(ex.name)}
             onPress={() => handleExercisePress(ex)}
+            onSwap={() => handleSwapExercise(idx)}
           />
         ))}
 

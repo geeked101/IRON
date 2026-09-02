@@ -29,12 +29,13 @@ export async function requestNotificationPermission(): Promise<boolean> {
   }
 }
 
-export async function scheduleWorkoutReminder(hourOfDay = 7) {
+export async function scheduleWorkoutReminder(workoutName?: string, hourOfDay = 7) {
   try {
+    const name = workoutName || 'Your workout'
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'IRON',
-        body: 'Push day waiting.',
+        body: `${name} is waiting. Time to hit the iron.`,
       },
       trigger: {
         hour: hourOfDay,

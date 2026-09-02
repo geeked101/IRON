@@ -28,6 +28,7 @@ interface AuthState {
   initialize: () => Promise<void>
   setOnboarded: (value?: boolean) => void
   setUid: (uid: string) => void
+  signOut: () => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -75,18 +76,30 @@ export const useAuthStore = create<AuthState>()(
             listenAuthState(async (user) => {
               try {
                 if (user) {
-                  console.log('[AuthStore] Cloud authenticated UID:', user.uid)
+                  const currentUid = get().uid
+                  console.log('[AuthStore] Cloud authenticated UID:', user.uid, 'Previous UID:', currentUid)
+
+                  if (currentUid && currentUid !== user.uid) {
+                    // Migrate all local SQLite records from temporary local UID to Firebase UID
+                    const { dbMigrateUserUid } = await import('../services/localDb')
+                    dbMigrateUserUid(currentUid, user.uid)
+                  }
+
+                  set({ uid: user.uid })
+                  await AsyncStorage.setItem(ASYNC_UID_KEY, user.uid)
+
+                  // Load remote profile or sync existing profile to Firebase UID
                   const remoteProfile = await fetchUserProfile(user.uid)
                   if (remoteProfile) {
                     useProfileStore.getState().setProfile(remoteProfile)
-                    set({
-                      uid: user.uid,
-                      isOnboarded: !!remoteProfile?.goal,
-                    })
-                    await AsyncStorage.setItem(ASYNC_UID_KEY, user.uid)
+                    set({ isOnboarded: !!remoteProfile.goal })
+                  } else if (useProfileStore.getState().profile) {
+                    await useProfileStore.getState().saveProfile()
                   }
-                } else {
-                  await signInAnon()
+
+                  // Reload queue for the authenticated UID
+                  const { useQueueStore } = await import('./queueStore')
+                  await useQueueStore.getState().load(user.uid)
                 }
               } catch (cloudErr) {
                 console.warn('[AuthStore] Background cloud auth error:', cloudErr)
@@ -101,6 +114,28 @@ export const useAuthStore = create<AuthState>()(
 
       setOnboarded: (value = true) => set({ isOnboarded: value }),
       setUid: (uid: string) => set({ uid }),
+
+      signOut: async () => {
+        try {
+          if (isFirebaseConfigured()) {
+            const { signOutUser } = await import('../services/firebase')
+            await signOutUser()
+          }
+
+          const newLocalUid = `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
+          await AsyncStorage.setItem(ASYNC_UID_KEY, newLocalUid)
+
+          set({
+            uid: newLocalUid,
+            isOnboarded: false,
+          })
+
+          const { useQueueStore } = await import('./queueStore')
+          await useQueueStore.getState().skipToDay(1, newLocalUid)
+        } catch (err) {
+          console.error('[AuthStore] SignOut error:', err)
+        }
+      },
     }),
     {
       name: 'iron_auth_storage',
@@ -148,6 +183,13 @@ export const useProfileStore = create<ProfileState>()(
           gender: profile.gender ?? 'male',
           notifications: profile.notifications ?? false,
           autoProgressiveOverload: profile.autoProgressiveOverload ?? true,
+          smartBulkInsights: profile.smartBulkInsights ?? true,
+          notificationPrefs: profile.notificationPrefs ?? {
+            workoutReminders: profile.notifications ?? false,
+            proteinCheck: profile.notifications ?? false,
+            hydrationNudge: false,
+            legDayReminder: profile.notifications ?? false,
+          },
         }
 
         try {
@@ -296,8 +338,9 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   totalProtein: 0,
 
   load: async () => {
+    const today = format(new Date(), 'yyyy-MM-dd')
+    set({ date: today })
     const { uid } = useAuthStore.getState()
-    const { date } = get()
     if (!uid) return
 
     // Sync targets from profile store if available
@@ -310,7 +353,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       })
     }
 
-    const log = await fetchNutritionLog(uid, date)
+    const log = await fetchNutritionLog(uid, today)
     if (log) {
       set({
         meals: log.meals,

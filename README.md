@@ -29,8 +29,9 @@ IRON/
 │   ├── components/                  # UI components and interactive visualizers
 │   │   ├── AddCustomFoodModal.tsx   # Custom food entry with live macro ratio bar
 │   │   ├── BreathingRestTimer.tsx   # Rest timer with animated halo pulse
+│   │   ├── GoogleSignInButton.tsx   # Google auth & local SQLite cloud sync button
 │   │   ├── MuscleHeatmap.tsx        # Interactive muscle fatigue & recovery heatmap
-│   │   ├── PRCelebrationModal.tsx   # Personal record modal
+│   │   ├── PRCelebrationModal.tsx   # Personal record modal celebration
 │   │   └── ShimmerGlow.tsx          # Metallic shine sweep animation component
 │   ├── context/
 │   │   └── FontSizeContext.tsx      # App-wide text scale provider
@@ -43,30 +44,34 @@ IRON/
 │   │   ├── OnboardingNavigator.tsx  # Initial user setup stack navigator
 │   │   └── RootNavigator.tsx        # Root navigation stack and tab router
 │   ├── screens/
-│   │   ├── ActiveWorkoutScreen.tsx  # Real-time workout execution and set logger
 │   │   ├── DayExerciseListScreen.tsx # Day exercise selection and completion tracker
+│   │   ├── EditSplitScreen.tsx      # Custom split & exercise configuration
 │   │   ├── HomeScreen.tsx           # Dashboard, workout queue status, daily macros
 │   │   ├── NutritionScreen.tsx      # Calorie and macro logger
 │   │   ├── PhotoDetailScreen.tsx    # Fullscreen progress photo view
 │   │   ├── PhotoProgressScreen.tsx  # Physique progress photo gallery
 │   │   ├── ProgressScreen.tsx       # Analytics, strength 1RM, and weight charts
-│   │   ├── RecoveryScreen.tsx       # Rest day metrics and stretch routine
+│   │   ├── RecoveryScreen.tsx       # Rest day metrics, stretch routine, cycle progression
 │   │   ├── SessionStatsScreen.tsx   # Post-workout summary and PR detection
-│   │   ├── SettingsScreen.tsx       # Preferences and text scale options
+│   │   ├── SettingsScreen.tsx       # Preferences, cloud account management, and export
 │   │   ├── SingleExerciseScreen.tsx # Exercise set logger and form cues
-│   │   └── onboarding/              # Multi-step onboarding screens
+│   │   ├── WorkoutScreen.tsx        # Active split view & workout starting screen
+│   │   └── onboarding/              # Multi-step onboarding and account recovery
 │   ├── services/
-│   │   ├── firebase.ts              # Firestore data service with null-safety checks
-│   │   └── notifications.ts         # Local notification scheduling service
+│   │   ├── firebase.ts              # Firestore & Auth service with null-safety checks
+│   │   ├── localDb.ts               # SQLite persistence layer for offline storage
+│   │   ├── notifications.ts         # Local notification scheduling service
+│   │   └── syncEngine.ts            # Background offline sync queue processor
 │   ├── store/
-│   │   ├── authStore.ts             # Auth state and profile store
 │   │   ├── customFoodStore.ts       # Custom user food items store
-│   │   ├── index.ts                 # Store exports
-│   │   └── queueStore.ts            # Sequential workout queue state machine
+│   │   ├── index.ts                 # Auth and User Profile Zustand stores
+│   │   ├── queueStore.ts            # Sequential workout queue state machine
+│   │   └── splitStore.ts            # Custom user workout split store
 │   ├── theme/
 │   │   └── index.ts                 # Titanium dark design tokens
 │   └── utils/
-│       └── progressiveOverload.ts   # 1RM calculation and progression logic
+│       ├── progressiveOverload.ts   # 1RM calculation and progression logic
+│       └── validation.ts            # Form and payload validation utilities
 ```
 
 ## Getting Started

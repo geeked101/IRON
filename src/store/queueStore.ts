@@ -28,6 +28,7 @@ const ASYNC_KEY = 'iron_queue'
 /** Serialisable snapshot stored in AsyncStorage and Firestore. */
 export interface QueueSnapshot {
   currentDay: number
+  previousDay: number | null
   lastCompletedDay: number | null
   cycleCount: number
   sessionCompleted: boolean
@@ -69,11 +70,17 @@ export interface QueueState extends QueueSnapshot {
 
   /**
    * Jump directly to a specific day, bypassing intervening days.
-   * The skipped days are removed permanently from this cycle.
+   * Bypassed day count is recorded in previousDay allowing easy undo.
    * @param day - destination day (1–7)
    * @param uid - Firebase UID for immediate persistence
    */
   skipToDay: (day: number, uid?: string | null) => Promise<void>
+
+  /**
+   * Revert the previous queue jump, restoring the active day prior to skipping.
+   * @param uid - Firebase UID for immediate persistence
+   */
+  undoSkip: (uid?: string | null) => Promise<void>
 
   /**
    * Clear the pending rest-day prompt flag without advancing.
@@ -87,6 +94,7 @@ export interface QueueState extends QueueSnapshot {
 
 const DEFAULT_SNAPSHOT: QueueSnapshot = {
   currentDay: 1,
+  previousDay: null,
   lastCompletedDay: null,
   cycleCount: 1,
   sessionCompleted: false,
@@ -172,6 +180,7 @@ export const useQueueStore = create<QueueState>((set, get) => ({
     const state = get()
     const snapshot: QueueSnapshot = {
       currentDay: state.currentDay,
+      previousDay: state.previousDay,
       lastCompletedDay: state.lastCompletedDay,
       cycleCount: state.cycleCount,
       sessionCompleted: state.sessionCompleted,
@@ -239,10 +248,26 @@ export const useQueueStore = create<QueueState>((set, get) => ({
     const newCycle = crossesCycleBoundary(currentDay, day) ? cycleCount + 1 : cycleCount
 
     set({
+      previousDay: currentDay,
       currentDay: day,
       sessionCompleted: false,
       pendingRestPrompt: false,
       cycleCount: newCycle,
+    })
+    await get().persist(uid)
+  },
+
+  // ── undoSkip ──────────────────────────────────────────────────────────────
+
+  undoSkip: async (uid) => {
+    const { previousDay, currentDay } = get()
+    if (previousDay === null || previousDay === currentDay) return
+
+    set({
+      currentDay: previousDay,
+      previousDay: null,
+      sessionCompleted: false,
+      pendingRestPrompt: false,
     })
     await get().persist(uid)
   },

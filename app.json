@@ -22,6 +22,7 @@
       "backgroundColor": "#0B0D12",
       "navigationBarColor": "#0B0D12",
       "package": "com.plutoluto.ironapp",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0B0D12"

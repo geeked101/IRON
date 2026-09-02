@@ -41,6 +41,9 @@ export default function SessionStatsScreen({ route, navigation }: any) {
   } = route.params ?? {}
 
   const [notes, setNotes] = useState('')
+  const [sleepQuality, setSleepQuality] = useState<'great' | 'okay' | 'poor'>('great')
+  const [energyLevel, setEnergyLevel] = useState<'high' | 'moderate' | 'low'>('high')
+  const [sorenessState, setSorenessState] = useState<'fresh' | 'moderate' | 'sore'>('fresh')
   const [saving, setSaving] = useState(false)
   const [newPRs, setNewPRs] = useState<string[]>([])
   const [showPRModal, setShowPRModal] = useState(false)
@@ -64,26 +67,30 @@ export default function SessionStatsScreen({ route, navigation }: any) {
 
   // ── Detect PRs on mount ──────────────────────────────────────────────────────
 
+  const [detectedPRs, setDetectedPRs] = useState<{ exerciseName: string; weight: number; reps: number }[]>([])
+
+  // ── Detect PRs on mount (compute only; persist on user Save) ─────────
+
   useEffect(() => {
-    if (!uid) return
     detectPRs()
   }, [uid])
 
   /**
    * Compares each exercise's best set against stored PRs.
-   * Calls updatePR for any new records found.
+   * Computes new records for display without side-effects.
    */
   async function detectPRs() {
-    if (!uid) return
+    const effectiveUid = uid || useAuthStore.getState().uid || 'local_user'
     try {
-      const existingPRs = await fetchAllPRs(uid)
+      const existingPRs = await fetchAllPRs(effectiveUid)
       const prMap: Record<string, PR> = {}
       existingPRs.forEach(pr => { prMap[pr.exerciseName] = pr })
 
-      const detected: string[] = []
+      const detectedList: { exerciseName: string; weight: number; reps: number }[] = []
+      const detectedNames: string[] = []
 
       for (const ex of exercises) {
-        if (ex.sets.length === 0) continue
+        if (!ex.sets || ex.sets.length === 0) continue
         const bestSet = ex.sets.reduce((a: SetLog, b: SetLog) =>
           estimateOneRepMax(b.weight, b.reps) > estimateOneRepMax(a.weight, a.reps) ? b : a
         , ex.sets[0])
@@ -93,13 +100,14 @@ export default function SessionStatsScreen({ route, navigation }: any) {
         const old1RM = existing ? estimateOneRepMax(existing.weight, existing.reps) : 0
 
         if (new1RM > old1RM) {
-          await updatePR(uid, ex.name, bestSet.weight, bestSet.reps)
-          detected.push(ex.name)
+          detectedList.push({ exerciseName: ex.name, weight: bestSet.weight, reps: bestSet.reps })
+          detectedNames.push(ex.name)
         }
       }
 
-      setNewPRs(detected)
-      if (detected.length > 0) {
+      setDetectedPRs(detectedList)
+      setNewPRs(detectedNames)
+      if (detectedNames.length > 0) {
         setShowPRModal(true)
       }
     } catch (err) {
@@ -108,8 +116,8 @@ export default function SessionStatsScreen({ route, navigation }: any) {
   }
 
   /**
-   * Saves the session to Firestore, marks queue position completed,
-   * and resets navigation to Home.
+   * Saves the session to local SQLite and Firebase, updates PR records,
+   * marks queue position completed, and resets navigation to Home.
    */
   async function handleSave() {
     if (savedRef.current || saving) return
@@ -117,30 +125,39 @@ export default function SessionStatsScreen({ route, navigation }: any) {
     setSaving(true)
 
     try {
+      const effectiveUid = uid || useAuthStore.getState().uid || 'local_user'
+
+      // 1. Persist detected PRs on explicit save confirmation
+      for (const pr of detectedPRs) {
+        await updatePR(effectiveUid, pr.exerciseName, pr.weight, pr.reps)
+      }
+
+      // 2. Save workout session
       const exerciseLogs: ExerciseLog[] = exercises.map((ex: { name: string; sets: SetLog[] }) => ({
         name: ex.name,
         sets: ex.sets,
       }))
 
-      if (uid) {
-        await saveWorkoutSession({
-          uid,
-          day,
-          dayName,
-          durationMinutes,
-          exercises: exerciseLogs,
-          totalVolume,
-          prs: newPRs,
-          notes,
-          loggedAt: null,
-        } as any)
+      await saveWorkoutSession({
+        uid: effectiveUid,
+        day,
+        dayName,
+        durationMinutes,
+        exercises: exerciseLogs,
+        totalVolume,
+        prs: newPRs,
+        notes,
+        loggedAt: null,
+      } as any)
 
-        await markSessionCompleted(uid)
-      }
+      await markSessionCompleted(effectiveUid)
 
       // Reset Workout stack and switch tab back to Home so back button doesn't loop
       navigation.reset({ index: 0, routes: [{ name: 'WorkoutHome' }] })
-      navigation.getParent()?.navigate('Home')
+      const parentNav = navigation.getParent()
+      if (parentNav) {
+        parentNav.navigate('Home')
+      }
     } catch (err) {
       savedRef.current = false
       setSaving(false)
@@ -223,6 +240,74 @@ export default function SessionStatsScreen({ route, navigation }: any) {
           })}
         </View>
 
+        {/* 3-Tap Recovery Check-In */}
+        <View style={s.card}>
+          <Text style={[s.cardLabel, { fontSize: f.label, color: colors.green }]}>QUICK RECOVERY CHECK-IN (3 TAPS)</Text>
+
+          {/* 1. Sleep */}
+          <Text style={[s.statLab, { fontSize: f.small, marginTop: 4, marginBottom: 6 }]}>Sleep Quality</Text>
+          <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.md }}>
+            {[
+              { id: 'great', label: '😊 Great' },
+              { id: 'okay', label: '😐 Okay' },
+              { id: 'poor', label: '😫 Poor' },
+            ].map(item => (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  s.recBtn,
+                  sleepQuality === item.id && s.recBtnSel,
+                ]}
+                onPress={() => setSleepQuality(item.id as any)}
+              >
+                <Text style={[s.recBtnText, sleepQuality === item.id && s.recBtnTextSel]}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* 2. Energy */}
+          <Text style={[s.statLab, { fontSize: f.small, marginBottom: 6 }]}>Energy Level</Text>
+          <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.md }}>
+            {[
+              { id: 'high', label: '⚡ High' },
+              { id: 'moderate', label: '🔋 Moderate' },
+              { id: 'low', label: '🪫 Low' },
+            ].map(item => (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  s.recBtn,
+                  energyLevel === item.id && s.recBtnSel,
+                ]}
+                onPress={() => setEnergyLevel(item.id as any)}
+              >
+                <Text style={[s.recBtnText, energyLevel === item.id && s.recBtnTextSel]}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* 3. Soreness */}
+          <Text style={[s.statLab, { fontSize: f.small, marginBottom: 6 }]}>Muscle Soreness</Text>
+          <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+            {[
+              { id: 'fresh', label: '🟢 Fresh' },
+              { id: 'moderate', label: '🟡 Moderate' },
+              { id: 'sore', label: '🔴 Sore' },
+            ].map(item => (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  s.recBtn,
+                  sorenessState === item.id && s.recBtnSel,
+                ]}
+                onPress={() => setSorenessState(item.id as any)}
+              >
+                <Text style={[s.recBtnText, sorenessState === item.id && s.recBtnTextSel]}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {/* Notes */}
         <View style={s.card}>
           <Text style={[s.cardLabel, { fontSize: f.label }]}>SESSION NOTES</Text>
@@ -249,7 +334,7 @@ export default function SessionStatsScreen({ route, navigation }: any) {
           activeOpacity={0.85}
         >
           <Text style={[s.saveBtnText, { fontSize: f.body + 2 }]}>
-            {saving ? 'Saving...' : 'Save session'}
+            {saving ? 'Saving...' : `Finish & Unlock ${day < 6 ? `Day ${day + 1}` : 'Next Cycle'} 🔥`}
           </Text>
         </TouchableOpacity>
       </View>
@@ -288,5 +373,9 @@ const s = StyleSheet.create({
   charCount: { textAlign: 'right', marginTop: spacing.xs },
   saveBtn: { backgroundColor: colors.titanium, borderRadius: radius.lg, height: 64, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
   saveBtnDisabled: { opacity: 0.5 },
-  saveBtnText: { fontWeight: '700', color: colors.bg },
+  saveBtnText: { color: colors.bg, fontWeight: '600' },
+  recBtn: { flex: 1, paddingVertical: 10, borderRadius: radius.sm, backgroundColor: colors.bgDeep, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center' },
+  recBtnSel: { backgroundColor: colors.bgInset, borderColor: colors.titaniumMid },
+  recBtnText: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
+  recBtnTextSel: { color: colors.titanium },
 })

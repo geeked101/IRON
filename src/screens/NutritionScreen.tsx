@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity,
   TextInput, StyleSheet, Modal, Alert
@@ -160,9 +160,11 @@ export default function NutritionScreen() {
     )
   }
 
-  const filteredFoods = category === 'all'
-    ? KENYAN_FOODS
-    : KENYAN_FOODS.filter(f => f.category === category)
+  const filteredFoods = useMemo(() => {
+    return category === 'all'
+      ? KENYAN_FOODS
+      : KENYAN_FOODS.filter(f => f.category === category)
+  }, [category])
 
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>

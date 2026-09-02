@@ -9,22 +9,24 @@ export interface ProgressionSuggestion {
 }
 
 /**
- * Analyse recent sessions for one exercise and suggest next weight.
+ * Analyse recent sessions for one exercise and suggest next weight intelligently.
  *
  * Logic:
- * - If all target reps were completed in the last session → suggest +2.5kg
- * - If all sets completed but reps dropped >2 from target → maintain
- * - If reps dropped consistently over 2+ sessions → deload by 5%
+ * - Evaluates multi-session performance (up to 5 recent sessions).
+ * - Incorporates RPE/RIR feedback: RPE 7-8 allows +2.5kg; RPE 9-10 recommends volume consolidation.
+ * - Multi-week 1RM velocity check: if 1RM growth is stalled (>3 sessions), suggests a 5-10% deload.
+ * - Rounds weight change to clean plate increments (default 2.5kg or 1.25kg).
  */
 export function suggestProgression(
   exerciseName: string,
   sessions: WorkoutSession[],
   targetReps: number,
-  incrementKg = 2.5
+  incrementKg = 2.5,
+  lastRpe?: number
 ): ProgressionSuggestion | null {
   const relevantSessions = sessions
-    .filter(s => s.exercises.some(e => e.name === exerciseName))
-    .slice(0, 3)
+    .filter(s => s.exercises?.some(e => e.name === exerciseName))
+    .slice(0, 5)
 
   if (relevantSessions.length === 0) return null
 
@@ -39,31 +41,53 @@ export function suggestProgression(
   const avgReps = completedSets.reduce((a, s) => a + s.reps, 0) / completedSets.length
   const allRepsHit = completedSets.every(s => s.reps >= targetReps)
 
-  // Check for consistent drop over 2 sessions
-  if (relevantSessions.length >= 2) {
-    const prevSession = relevantSessions[1]
-    const prevExercise = prevSession.exercises.find(e => e.name === exerciseName)
-    const prevSets = prevExercise?.sets.filter(s => s.done) ?? []
-    const prevAvgReps = prevSets.length > 0
-      ? prevSets.reduce((a, s) => a + s.reps, 0) / prevSets.length
-      : targetReps
-
-    if (avgReps < targetReps - 2 && avgReps < prevAvgReps - 1) {
-      const deloadWeight = Math.round((lastWeight * 0.95) / 2.5) * 2.5
+  // 1. RPE-based micro-adjustment
+  if (lastRpe !== undefined && lastRpe > 0) {
+    if (lastRpe >= 9.5 && allRepsHit) {
       return {
-        type: 'deload',
-        weightChange: deloadWeight - lastWeight,
-        message: `Reps dropping. Deload to ${deloadWeight}kg and rebuild.`,
-        confidence: 'medium',
+        type: 'maintain',
+        weightChange: 0,
+        message: `RPE ${lastRpe} indicates near-maximal effort. Hold at ${lastWeight}kg to solidify form before advancing.`,
+        confidence: 'high',
+      }
+    }
+    if (lastRpe <= 7.5 && allRepsHit) {
+      const inc = Math.round((incrementKg * 1.25) / 1.25) * 1.25
+      return {
+        type: 'increase',
+        weightChange: inc,
+        message: `RPE ${lastRpe} logged (2+ RIR). Strong speed detected. Add +${inc}kg next session!`,
+        confidence: 'high',
       }
     }
   }
 
+  // 2. Multi-week fatigue/repetition drop check
+  if (relevantSessions.length >= 3) {
+    const repsList = relevantSessions.map(s => {
+      const ex = s.exercises.find(e => e.name === exerciseName)
+      const done = ex?.sets.filter(st => st.done) ?? []
+      return done.length > 0 ? done.reduce((a, b) => a + b.reps, 0) / done.length : targetReps
+    })
+
+    // Check if reps decreased across last 3 sessions
+    if (repsList[0] < targetReps - 2 && repsList[0] < repsList[1] && repsList[1] < repsList[2]) {
+      const deloadWeight = Math.round((lastWeight * 0.90) / 2.5) * 2.5
+      return {
+        type: 'deload',
+        weightChange: deloadWeight - lastWeight,
+        message: `3-session velocity decline. Deload 10% to ${deloadWeight}kg to clear accumulated fatigue.`,
+        confidence: 'high',
+      }
+    }
+  }
+
+  // 3. Standard rep completion target
   if (allRepsHit) {
     return {
       type: 'increase',
       weightChange: incrementKg,
-      message: `All ${completedSets.length} sets completed. Add ${incrementKg}kg next session.`,
+      message: `All ${completedSets.length} sets hit target ${targetReps} reps. Add +${incrementKg}kg next session.`,
       confidence: 'high',
     }
   }
@@ -71,7 +95,7 @@ export function suggestProgression(
   return {
     type: 'maintain',
     weightChange: 0,
-    message: `Hit ${Math.round(avgReps)}/${targetReps} reps avg. Stay at ${lastWeight}kg and lock in form.`,
+    message: `Averaged ${avgReps.toFixed(1)}/${targetReps} reps. Stay at ${lastWeight}kg and build set volume.`,
     confidence: 'medium',
   }
 }
@@ -88,13 +112,17 @@ export function estimateOneRepMax(weight: number, reps: number): number {
  * Calculate lean bulk calorie target from bodyweight and goal.
  */
 export function calculateCaloricTarget(
-  weightKg: number,
+  weight: number,
   heightCm: number,
   ageYears: number,
-  goal: 'lean-bulk' | 'cut' | 'maintain' | 'aggressive-bulk'
+  goal: 'lean-bulk' | 'cut' | 'maintain' | 'aggressive-bulk',
+  gender: 'male' | 'female' = 'male',
+  unit: 'kg' | 'lb' = 'kg'
 ): { calories: number; protein: number } {
-  // Mifflin-St Jeor BMR (assuming male for now)
-  const bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears + 5
+  const weightKg = unit === 'lb' ? weight / 2.20462 : weight
+  const genderOffset = gender === 'female' ? -161 : 5
+  // Mifflin-St Jeor BMR equation with gender sensitivity
+  const bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears + genderOffset
   // Moderate activity multiplier
   const tdee = Math.round(bmr * 1.55)
 

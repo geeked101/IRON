@@ -12,16 +12,26 @@ const FIREBASE_ENV_KEYS = [
 
 const missing = FIREBASE_ENV_KEYS.filter((key) => !process.env[key])
 
-if (missing.length > 0 && process.env.EAS_BUILD === 'true') {
-  throw new Error(
-    `EAS build is missing Firebase env vars: ${missing.join(', ')}.\n` +
-    'Run: eas env:push --environment preview --path .env\n' +
-    'Then rebuild: eas build --platform android --profile preview'
+if (missing.length > 0) {
+  console.warn(
+    `[IRON Config Warning] Firebase env vars missing: ${missing.join(', ')}.\n` +
+    'The app will operate in local offline mode.'
+  )
+}
+
+if (!process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) {
+  console.warn(
+    '[IRON Config Warning] Google Auth Web Client ID missing (EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID).\n' +
+    'Users can still enter their Client ID directly in the Google Sign-In prompt.'
   )
 }
 
 module.exports = {
   expo: {
     ...appJson.expo,
+    plugins: [
+      ...(appJson.expo.plugins || []),
+      'expo-web-browser',
+    ],
   },
 }

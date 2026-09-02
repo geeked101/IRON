@@ -296,7 +296,7 @@ export default function ProgressScreen({ navigation }: any) {
                 withOuterLines={false}
               />
             </View>
-            <InsightCard text={weightInsight.message} />
+            {profile?.smartBulkInsights !== false && <InsightCard text={weightInsight.message} />}
             
             {last4WeightLogs.length > 0 && (
               <View style={s.card}>
@@ -446,14 +446,16 @@ export default function ProgressScreen({ navigation }: any) {
               </View>
             </View>
 
-            <InsightCard 
-              type={calData.diff < -200 ? 'amber' : 'green'}
-              text={
-                calData.diff < -200 
-                  ? `Averaging ${Math.abs(calData.diff)} kcal below target. Add a larger dinner or a mass shake to hit your goals.`
-                  : `Averaging close to your target calories. Excellent consistency.`
-              } 
-            />
+            {profile?.smartBulkInsights !== false && (
+              <InsightCard 
+                type={calData.diff < -200 ? 'amber' : 'green'}
+                text={
+                  calData.diff < -200 
+                    ? `Averaging ${Math.abs(calData.diff)} kcal below target. Add a larger dinner or a mass shake to hit your goals.`
+                    : `Averaging close to your target calories. Excellent consistency.`
+                } 
+              />
+            )}
           </>
         )}
       </View>

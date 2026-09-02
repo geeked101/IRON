@@ -9,6 +9,8 @@ import { useProfileStore, useAuthStore } from '../store/index'
 import { calculateCaloricTarget } from '../utils/progressiveOverload'
 import { setupAllNotifications, cancelAllNotifications } from '../services/notifications'
 import { useFontSize, type FontSizeKey } from '../context/FontSizeContext'
+import GoogleSignInButton from '../components/GoogleSignInButton'
+import SyncBadge from '../components/SyncBadge'
 
 function Row({ label, value, onPress }: { label: string; value?: string; onPress?: () => void }) {
   return (
@@ -43,18 +45,26 @@ function SectionHeader({ title }: { title: string }) {
   return <Text style={s.sectionHeader}>{title}</Text>
 }
 
-export default function SettingsScreen() {
+export default function SettingsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets()
   const { profile, setProfile, saveProfile } = useProfileStore()
   const { uid } = useAuthStore()
   const { size: fontSize, setSize: setFontSize } = useFontSize()
 
-  const [notifWorkout, setNotifWorkout] = useState(true)
-  const [notifProtein, setNotifProtein] = useState(true)
-  const [notifWater, setNotifWater] = useState(false)
-  const [notifLeg, setNotifLeg] = useState(true)
-  const [autoOverload, setAutoOverload] = useState(true)
-  const [smartInsights, setSmartInsights] = useState(true)
+  const [notifWorkout, setNotifWorkout] = useState(
+    profile?.notificationPrefs?.workoutReminders ?? profile?.notifications ?? false
+  )
+  const [notifProtein, setNotifProtein] = useState(
+    profile?.notificationPrefs?.proteinCheck ?? profile?.notifications ?? false
+  )
+  const [notifWater, setNotifWater] = useState(
+    profile?.notificationPrefs?.hydrationNudge ?? false
+  )
+  const [notifLeg, setNotifLeg] = useState(
+    profile?.notificationPrefs?.legDayReminder ?? profile?.notifications ?? false
+  )
+  const [autoOverload, setAutoOverload] = useState(profile?.autoProgressiveOverload ?? true)
+  const [smartInsights, setSmartInsights] = useState(profile?.smartBulkInsights ?? true)
 
   const goals: Record<string, string> = {
     'lean-bulk': 'Lean bulk',
@@ -76,28 +86,164 @@ export default function SettingsScreen() {
       hydrationNudge: key === 'water' ? val : notifWater,
       legDayReminder: key === 'leg' ? val : notifLeg,
     }
-    if (Object.values(prefs).some(Boolean)) {
+    const hasAnyNotif = Object.values(prefs).some(Boolean)
+
+    if (hasAnyNotif) {
+
+      const { requestNotificationPermission } = await import('../services/notifications')
+      const granted = await requestNotificationPermission()
+      if (!granted) {
+        Alert.alert(
+          'Permission Required',
+          'Please enable notification permissions in your device settings to receive training reminders.'
+        )
+        if (key === 'workout') setNotifWorkout(false)
+        if (key === 'protein') setNotifProtein(false)
+        if (key === 'water') setNotifWater(false)
+        if (key === 'leg') setNotifLeg(false)
+        return
+      }
       await setupAllNotifications(prefs)
     } else {
       await cancelAllNotifications()
     }
+
+    setProfile({
+      notifications: hasAnyNotif,
+      notificationPrefs: prefs,
+    })
+    await saveProfile()
+  }
+
+  async function handleSmartInsightsChange(val: boolean) {
+    setSmartInsights(val)
+    setProfile({ smartBulkInsights: val })
+    await saveProfile()
+  }
+
+  async function handleAutoOverloadChange(val: boolean) {
+    setAutoOverload(val)
+    setProfile({ autoProgressiveOverload: val })
+    await saveProfile()
   }
 
   async function handleWeightChange(delta: number) {
-    const current = profile?.weight ?? 54
+    const current = profile?.weight ?? 70
     const next = Math.max(30, Math.min(200, parseFloat((current + delta).toFixed(1))))
     setProfile({ weight: next })
     // Recalculate targets
-    const targets = calculateCaloricTarget(next, profile?.height ?? 172, profile?.age ?? 22, profile?.goal ?? 'lean-bulk')
+    const targets = calculateCaloricTarget(
+      next,
+      profile?.height ?? 175,
+      profile?.age ?? 22,
+      profile?.goal ?? 'lean-bulk',
+      profile?.gender ?? 'male',
+      profile?.units ?? 'kg'
+    )
     setProfile({ targetCalories: targets.calories, targetProtein: targets.protein })
     await saveProfile()
+  }
+
+  async function handleExportData() {
+    try {
+      const FileSystem = await import('expo-file-system/legacy')
+      const { Share } = await import('react-native')
+      const effectiveUid = uid || useAuthStore.getState().uid || 'local_user'
+      const { fetchRecentSessions, fetchAllPRs } = await import('../services/firebase')
+      const { dbGetWeightHistory } = await import('../services/localDb')
+
+      const [sessions, prs] = await Promise.all([
+        fetchRecentSessions(effectiveUid, 100),
+        fetchAllPRs(effectiveUid),
+      ])
+      const weightHistory = dbGetWeightHistory(effectiveUid)
+
+      const exportPayload = {
+        app: 'IRON',
+        version: '1.0.0',
+        exportedAt: new Date().toISOString(),
+        profile: profile ?? {},
+        sessions,
+        prs,
+        weightHistory,
+      }
+
+      const jsonStr = JSON.stringify(exportPayload, null, 2)
+      const fileName = `IRON_Export_${Date.now()}.json`
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`
+
+      await FileSystem.writeAsStringAsync(fileUri, jsonStr, {
+        encoding: FileSystem.EncodingType.UTF8,
+      })
+
+      Alert.alert(
+        'Export Saved to File',
+        `Successfully generated export file on disk:\n${fileName}\n\nContains ${sessions.length} sessions, ${prs.length} PRs, and profile metrics.`,
+        [
+          { text: 'OK', style: 'cancel' },
+          {
+            text: 'Share / Save File',
+            onPress: async () => {
+              try {
+                await Share.share({
+                  url: fileUri,
+                  title: 'IRON Data Export',
+                  message: jsonStr,
+                })
+              } catch (shareErr) {
+                console.error('[Export] Share error:', shareErr)
+              }
+            },
+          },
+        ]
+      )
+    } catch (err) {
+      console.error('[Settings] Export error:', err)
+      Alert.alert('Export failed', 'Could not save export file.')
+    }
+  }
+
+  async function handleResetData() {
+    Alert.alert(
+      'Reset All App Data?',
+      'This will erase all local workout logs, PRs, and profile preferences on this device.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset Everything',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { dbResetAllData } = await import('../services/localDb')
+              const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default
+
+              dbResetAllData()
+              await AsyncStorage.clear()
+
+              useProfileStore.setState({ profile: null })
+
+              Alert.alert('Data Reset Complete', 'App data has been reset to defaults.', [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    useAuthStore.getState().setOnboarded(false)
+                  },
+                },
+              ])
+            } catch (err) {
+              console.error('[Settings] Reset error:', err)
+              Alert.alert('Reset failed', 'Could not complete data reset.')
+            }
+          },
+        },
+      ]
+    )
   }
 
   return (
     <ScrollView style={[s.container, { paddingTop: insets.top }]} showsVerticalScrollIndicator={false}>
       <View style={s.ph}>
         <Text style={s.title}>Settings</Text>
-
         {/* Profile card */}
         <View style={s.profileCard}>
           <View style={s.avatar}>
@@ -105,8 +251,17 @@ export default function SettingsScreen() {
           </View>
           <View>
             <Text style={s.profileName}>Your profile</Text>
-            <Text style={s.profileSub}>{profile?.weight ?? 54}kg · {levels[profile?.level ?? 'intermediate']}</Text>
+            <Text style={s.profileSub}>{profile?.weight ?? 70}{profile?.units ?? 'kg'} · {levels[profile?.level ?? 'intermediate']}</Text>
           </View>
+        </View>
+
+        {/* ACCOUNT & CLOUD SYNC */}
+        <SectionHeader title="ACCOUNT & CLOUD SYNC" />
+        <View style={[s.card, { paddingVertical: spacing.md }]}>
+          <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: spacing.md, lineHeight: 16 }}>
+            Connect your Google Account to automatically sync workouts, PRs, and body metrics across all your devices.
+          </Text>
+          <GoogleSignInButton label="Sync & Sign in with Google" />
         </View>
 
         {/* GOAL + LEVEL */}
@@ -126,14 +281,15 @@ export default function SettingsScreen() {
               <TouchableOpacity style={s.stepBtn} onPress={() => handleWeightChange(-0.5)}>
                 <Text style={s.stepBtnText}>−</Text>
               </TouchableOpacity>
-              <Text style={s.rowVal}>{profile?.weight ?? 54} kg</Text>
+              <Text style={s.rowVal}>{profile?.weight ?? 70} {profile?.units ?? 'kg'}</Text>
               <TouchableOpacity style={s.stepBtn} onPress={() => handleWeightChange(0.5)}>
                 <Text style={s.stepBtnText}>+</Text>
               </TouchableOpacity>
             </View>
           </View>
-          <Row label="Height" value={`${profile?.height ?? 172} cm`} />
+          <Row label="Height" value={`${profile?.height ?? 175} cm`} />
           <Row label="Age" value={`${profile?.age ?? 22}`} />
+          <Row label="Gender" value={profile?.gender === 'female' ? 'Female' : 'Male'} />
           <Row label="Units" value={profile?.units === 'lb' ? 'LBS' : 'KG'} />
         </View>
 
@@ -142,11 +298,18 @@ export default function SettingsScreen() {
         <View style={s.card}>
           <Row label="Calories" value={`${profile?.targetCalories ?? 2700} kcal`} />
           <Row label="Protein" value={`${profile?.targetProtein ?? 110}g`} />
-          <Row label="Water" value="4.0 L" />
+          <Row label="Water" value={`${(profile?.targetWater ?? 4.0).toFixed(1)} L`} />
           <TouchableOpacity
             style={[s.recalcBtn]}
             onPress={() => {
-              const t = calculateCaloricTarget(profile?.weight ?? 54, profile?.height ?? 172, profile?.age ?? 22, profile?.goal ?? 'lean-bulk')
+              const t = calculateCaloricTarget(
+                profile?.weight ?? 70,
+                profile?.height ?? 175,
+                profile?.age ?? 22,
+                profile?.goal ?? 'lean-bulk',
+                profile?.gender ?? 'male',
+                profile?.units ?? 'kg'
+              )
               setProfile({ targetCalories: t.calories, targetProtein: t.protein })
               saveProfile()
               Alert.alert('Targets updated', `Calories: ${t.calories} kcal\nProtein: ${t.protein}g`)
@@ -156,6 +319,59 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* ACCOUNT & SYNC */}
+        <SectionHeader title="ACCOUNT & SYNC" />
+        <SyncBadge />
+        <View style={s.card}>
+          <View style={s.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.rowLabel}>
+                {uid && !uid.startsWith('local_') ? 'Cloud Account (Google)' : 'Local Account (Offline)'}
+              </Text>
+              <Text style={s.rowSub}>
+                UID: {uid ? `${uid.substring(0, 16)}...` : 'Not initialized'}
+              </Text>
+            </View>
+            <View style={{ paddingVertical: 4 }}>
+              <Text style={[s.rowVal, { color: uid && !uid.startsWith('local_') ? colors.green : colors.amber }]}>
+                {uid && !uid.startsWith('local_') ? '● Synced' : '○ Local'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={{ paddingVertical: spacing.md }}>
+            <GoogleSignInButton
+              label={uid && !uid.startsWith('local_') ? 'Switch Google Account' : 'Link Google Account & Sync'}
+            />
+          </View>
+
+          {uid && !uid.startsWith('local_') && (
+            <TouchableOpacity
+              style={s.row}
+              onPress={() => {
+                Alert.alert(
+                  'Sign Out',
+                  'Are you sure you want to sign out of your cloud account? Local data on this device will be preserved.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Sign Out',
+                      style: 'destructive',
+                      onPress: async () => {
+                        await useAuthStore.getState().signOut()
+                        Alert.alert('Signed Out', 'You have signed out. Local mode active.')
+                      },
+                    },
+                  ]
+                )
+              }}
+            >
+              <Text style={[s.rowLabel, { color: colors.red }]}>Sign out of Cloud Account</Text>
+              <Text style={[s.rowVal, { color: colors.red }]}>→</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         {/* SYSTEM */}
         <SectionHeader title="SYSTEM" />
         <View style={s.card}>
@@ -163,13 +379,13 @@ export default function SettingsScreen() {
             label="Auto progressive overload"
             sub="Suggests weight increases automatically"
             value={autoOverload}
-            onChange={setAutoOverload}
+            onChange={handleAutoOverloadChange}
           />
           <ToggleRow
             label="Smart bulk insights"
             sub="Weight trend analysis and calorie tips"
             value={smartInsights}
-            onChange={setSmartInsights}
+            onChange={handleSmartInsightsChange}
           />
         </View>
 
@@ -242,25 +458,11 @@ export default function SettingsScreen() {
         {/* DANGER ZONE */}
         <SectionHeader title="DATA" />
         <View style={s.card}>
-          <TouchableOpacity style={s.row} onPress={() =>
-            Alert.alert('Export data', 'Export all session and nutrition data as JSON?', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Export', onPress: () => {
-                Alert.alert('Exporting', 'Data export to JSON is not implemented yet.')
-              } },
-            ])
-          }>
+          <TouchableOpacity style={s.row} onPress={handleExportData}>
             <Text style={s.rowLabel}>Export data</Text>
             <Text style={[s.rowVal, { color: colors.titaniumMid }]}>JSON →</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.row} onPress={() =>
-            Alert.alert('Reset app', 'This will clear all local data. Firebase data stays intact.', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Reset', style: 'destructive', onPress: () => {
-                Alert.alert('Reset', 'Local app data reset is not implemented yet.')
-              } },
-            ])
-          }>
+          <TouchableOpacity style={s.row} onPress={handleResetData}>
             <Text style={[s.rowLabel, { color: colors.red }]}>Reset app data</Text>
             <Text style={[s.rowVal, { color: colors.red }]}>⚠</Text>
           </TouchableOpacity>

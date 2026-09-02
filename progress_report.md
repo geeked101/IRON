@@ -1,41 +1,47 @@
-# IRON App — Progress Report & Audit Summary
-*Updated: 2026-08-28*
+# IRON App — Architecture & Stability Progress Report
+*Updated: 2026-09-02*
 
 ---
 
-## ✅ What's Built & Verified
+## ✅ Verified Architecture & Flow Status
 
-| Area | Status | Notes |
-|------|--------|-------|
-| Local SQLite Database (`expo-sqlite`) | ✅ | Offline-first persistence for user profiles, workouts, PRs, weight, meals |
-| Firebase Sync Layer | ✅ | Background opportunistic cloud synchronization |
-| Onboarding flow | ✅ | 7 screens (Splash → Goal → Level → Stats → Targets → Notifications → Ready) |
-| Zustand stores | ✅ | Auth, Profile, Workout, Nutrition, Queue, CustomFood stores with persistent UID |
-| Navigation | ✅ | Root → Onboarding / Main tabs + Workout stack |
-| HomeScreen | ✅ | Sequential queue system, calorie ring, macro grid, streak, rest-day modal |
-| WorkoutScreen | ✅ | Day selector with skip confirmation, PPL×2 split cards |
-| ActiveWorkoutScreen | ✅ | Sets/History/Info tabs, rest timer, 1RM estimate, session save |
-| Photo Progress | ✅ | Photo logging, local file persistence & full-screen photo detail view |
-| NutritionScreen | ✅ | Dashboard + food log, Kenyan food DB, custom food addition |
-| ProgressScreen | ✅ | Weight/Strength/Volume/Calories tabs with interactive charts |
-| RecoveryScreen | ✅ | Soreness map, stretch routine, hydration tracking |
-| SettingsScreen | ✅ | Profile editor, notification toggles, text-size selector |
-| Theme & Assets | ✅ | Full Titanium tokens + valid app icons & splash screens |
-| TypeScript Build | ✅ | Clean compilation with 0 errors (`tsc --noEmit`) |
+| Area | Status | Verified Behavior |
+|------|--------|-------------------|
+| Local SQLite Database (`expo-sqlite`) | ✅ | Offline-first persistence for user profiles, workouts, PRs, weight, and nutrition |
+| Cloud Sync & UID Migration | ✅ | Automatic SQLite UID migration (`dbMigrateUserUid`) when transitioning to Firebase auth |
+| Onboarding Flow | ✅ | Multi-step onboarding + runtime notification setup & account restoration |
+| Navigation Architecture | ✅ | `RootNavigator` gates Onboarding vs Main Tabs. Primary logger path: Day List → Single Exercise → Session Stats |
+| Build & EAS Config | ✅ | EAS build gracefully warns on missing Firebase env vars without failing offline builds |
+| PR Persist Engine | ✅ | PRs calculated for UI preview on mount, but written to SQLite/Firestore ONLY on user "Save session" |
+| Daily Target Math | ✅ | Gender-sensitive & unit-aware Mifflin-St Jeor formula (`calculateCaloricTarget`) |
+| Data Management | ✅ | Fully functional JSON data export and complete app data reset in Settings |
+| Graceful Cloud Degradation | ✅ | Informative Local-First Mode status badge & dialogs when Firebase credentials are omitted |
+| TypeScript & Diagnostics | ✅ | Clean compilation with 0 errors |
 
 ---
 
-## 🛠️ Resolved Critical Issues
+## 🛠️ Resolved Architectural Debt & Audit Findings
 
-1. **Local Data Loss & Offline Auth (Resolved)**
-   - Implemented `src/services/localDb.ts` using `expo-sqlite` (WAL mode).
-   - Created SQLite tables and indexes for `user_profile`, `workout_sessions`, `personal_records`, `weight_logs`, `nutrition_logs`, and `custom_foods`.
-   - Updated `useAuthStore` and `useProfileStore` to store persistent local user IDs and load cached profiles immediately on cold start. Users now remain logged in and onboarded offline.
+1. **Auth UID Swapping Data Loss (Resolved)**
+   - Added `dbMigrateUserUid(oldUid, newUid)` in `localDb.ts`.
+   - Updated `useAuthStore.initialize()` to automatically migrate all SQLite tables (`user_profile`, `workout_sessions`, `personal_records`, `weight_logs`, `nutrition_logs`, `custom_foods`) when Firebase assigns a cloud UID.
 
-2. **TypeScript Compilation (Verified)**
-   - All modules compile cleanly with 0 errors (`tsc --noEmit`).
+2. **PR Detection Mount Side-Effects (Resolved)**
+   - Refactored `SessionStatsScreen.tsx` to detect PRs immutably for UI feedback on mount.
+   - Database writes to `personal_records` are deferred until the user explicitly taps "Save session".
+
+3. **Documentation & Navigation Realignment (Resolved)**
+   - Updated `README.md` and `RootNavigator.tsx` header trees to eliminate stale file references (`ActiveWorkoutScreen.tsx`, `authStore.ts`).
+
+4. **Graceful Cloud Degradation (Resolved)**
+   - Updated `GoogleSignInButton.tsx` and `firebase.ts` to detect missing cloud credentials gracefully.
+   - Converts Google Sign-In into an interactive Local-First Mode status badge detailing offline SQLite availability.
+
+5. **Recovery Screen Progression & Rest Day Modal (Resolved)**
+   - Implemented real rest day session logging and queue Advancement (`Cycle N → Cycle N+1`) in `RecoveryScreen.tsx`.
+   - Fixed literal `{n+1}` copy in `RestDayModal` with dynamic cycle calculations.
 
 ---
 
-## 🚀 Status: 100% OFFLINE-FIRST & BUILD READY
-All workout progression, personal records, set performance history, weight trends, and nutrition logs now persist locally on the device in SQLite with zero latency and full offline support.
+## 🚀 Status: PRODUCTION READINESS ACHIEVED
+The IRON application now features consolidated offline persistence, safe auth state transitions, accurate calorie/unit calculations, clean navigation paths, and verified build pipelines.

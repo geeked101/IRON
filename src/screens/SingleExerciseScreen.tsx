@@ -10,7 +10,7 @@
  * Tabs: Sets / History / Info
  */
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, Vibration, Platform,
@@ -91,7 +91,7 @@ const rt = StyleSheet.create({
 // ─── Set Row ───────────────────────────────────────────────────────────────────
 
 /** Individual logged set row in the sets table. */
-function SetRow({ index, weight, reps, done, onToggle }: {
+const SetRow = React.memo(function SetRow({ index, weight, reps, done, onToggle }: {
   index: number; weight: number; reps: number; done: boolean; onToggle: () => void
 }) {
   return (
@@ -109,7 +109,7 @@ function SetRow({ index, weight, reps, done, onToggle }: {
       </TouchableOpacity>
     </View>
   )
-}
+})
 
 const sr = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: '#1a1e28' },
@@ -176,9 +176,9 @@ export default function SingleExerciseScreen({ route, navigation }: any) {
   }
 
   /** Toggle a set's done state. */
-  function handleToggle(i: number) {
+  const handleToggle = useCallback((i: number) => {
     setSets(prev => prev.map((s, idx) => idx === i ? { ...s, done: !s.done } : s))
-  }
+  }, [])
 
   /**
    * Marks exercise as done. Passes all logged sets back to DayExerciseListScreen
@@ -192,19 +192,26 @@ export default function SingleExerciseScreen({ route, navigation }: any) {
   }
 
   // History data for this exercise from recent sessions
-  const history = recentSessions
-    .map(s => {
-      const ex = s.exercises?.find((e: any) => e.name === exerciseName)
-      if (!ex || ex.sets.length === 0) return null
-      const best = ex.sets.reduce((a: SetLog, b: SetLog) => b.weight > a.weight ? b : a, ex.sets[0])
-      return { date: s.loggedAt?.toDate?.()?.toLocaleDateString?.() ?? 'Unknown', weight: best.weight, reps: best.reps, setCount: ex.sets.length }
-    })
-    .filter(Boolean)
-    .slice(0, 4)
+  const history = useMemo(() => {
+    return recentSessions
+      .map(s => {
+        const ex = s.exercises?.find((e: any) => e.name === exerciseName)
+        if (!ex || ex.sets.length === 0) return null
+        const best = ex.sets.reduce((a: SetLog, b: SetLog) => b.weight > a.weight ? b : a, ex.sets[0])
+        return { date: s.loggedAt?.toDate?.()?.toLocaleDateString?.() ?? 'Unknown', weight: best.weight, reps: best.reps, setCount: ex.sets.length }
+      })
+      .filter(Boolean)
+      .slice(0, 4)
+  }, [recentSessions, exerciseName])
 
-  const oneRM = sets.length > 0 ? estimateOneRepMax(curWeight, curReps) : null
-  const targetRepsNum = parseInt(targetReps.split('–').pop() ?? '10', 10)
-  const suggestion = suggestProgression(exerciseName, recentSessions, targetRepsNum)
+  const oneRM = useMemo(() => {
+    return sets.length > 0 ? estimateOneRepMax(curWeight, curReps) : null
+  }, [sets.length, curWeight, curReps])
+
+  const suggestion = useMemo(() => {
+    const targetRepsNum = parseInt(targetReps.split('–').pop() ?? '10', 10)
+    return suggestProgression(exerciseName, recentSessions, targetRepsNum)
+  }, [exerciseName, recentSessions, targetReps])
 
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>
@@ -236,6 +243,20 @@ export default function SingleExerciseScreen({ route, navigation }: any) {
           {/* ── SETS TAB ── */}
           {tab === 'sets' && !showRest && (
             <>
+              {/* Form Cues Coaching Pills */}
+              {formCues && formCues.length > 0 && (
+                <View style={s.cueBanner}>
+                  <Text style={[s.cueLabel, { fontSize: f.label }]}>COACHING CUES</Text>
+                  <View style={s.cuePillsRow}>
+                    {formCues.map((cue: string, i: number) => (
+                      <View key={i} style={s.cuePill}>
+                        <Text style={[s.cuePillText, { fontSize: f.small }]}>• {cue}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
               {/* Weight + Reps adjusters */}
               <View style={s.adjRow}>
                 <View style={{ alignItems: 'center' }}>
@@ -278,6 +299,13 @@ export default function SingleExerciseScreen({ route, navigation }: any) {
                 </View>
               )}
 
+              {/* 1-Tap Log Set Action Button */}
+              <TouchableOpacity style={s.logSetCTA} onPress={handleLogSet} activeOpacity={0.85}>
+                <Text style={[s.logSetCTAText, { fontSize: f.body + 1 }]}>
+                  Log Set {sets.length + 1} · {curWeight}kg × {curReps} reps 🔥
+                </Text>
+              </TouchableOpacity>
+
               {/* Set table */}
               <View style={s.card}>
                 <View style={s.tableHeader}>
@@ -290,10 +318,6 @@ export default function SingleExerciseScreen({ route, navigation }: any) {
                 {sets.map((set, i) => (
                   <SetRow key={i} index={i} weight={set.weight} reps={set.reps} done={set.done} onToggle={() => handleToggle(i)} />
                 ))}
-                <TouchableOpacity style={s.logSetRow} onPress={handleLogSet}>
-                  <Text style={s.logSetPlus}>+</Text>
-                  <Text style={[s.logSetText, { fontSize: f.body }]}>Log set</Text>
-                </TouchableOpacity>
               </View>
 
               {/* 1RM */}
@@ -306,7 +330,7 @@ export default function SingleExerciseScreen({ route, navigation }: any) {
 
               {/* Rest timer button */}
               <TouchableOpacity style={s.restBtn} onPress={() => setShowRest(true)}>
-                <Text style={[s.restBtnText, { fontSize: f.body }]}>Start rest timer</Text>
+                <Text style={[s.restBtnText, { fontSize: f.body }]}>Start rest timer ({restSeconds}s)</Text>
               </TouchableOpacity>
             </>
           )}
@@ -394,6 +418,13 @@ const s = StyleSheet.create({
   tabText: { fontSize: 13, color: colors.textMuted },
   tabTextOn: { color: colors.titanium },
   ph: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  cueBanner: { backgroundColor: colors.bgCard, borderWidth: 0.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
+  cueLabel: { color: colors.titaniumMid, letterSpacing: 1, marginBottom: 6, fontWeight: '600' },
+  cuePillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  cuePill: { backgroundColor: colors.bgDeep, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 0.5, borderColor: colors.border },
+  cuePillText: { color: colors.textSecondary },
+  logSetCTA: { backgroundColor: colors.titanium, borderRadius: radius.md, height: 54, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
+  logSetCTAText: { color: colors.bg, fontWeight: '600' },
   adjRow: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: colors.bgCard, borderWidth: 0.5, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.sm },
   adjLabel: { color: colors.textMuted, letterSpacing: 1, marginBottom: spacing.sm },
   adjControls: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

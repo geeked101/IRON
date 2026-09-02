@@ -1,9 +1,11 @@
 import React, { useState } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, spacing, radius, typography } from '../theme'
 import { STRETCH_ROUTINE } from '../data/workoutSplit'
-import { useNutritionStore } from '../store/index'
+import { useNutritionStore, useAuthStore } from '../store/index'
+import { useQueueStore } from '../store/queueStore'
+import { saveWorkoutSession } from '../services/firebase'
 import MuscleHeatmap from '../components/MuscleHeatmap'
 
 type Soreness = 'fresh' | 'moderate' | 'sore'
@@ -26,10 +28,13 @@ const sorenessOrder: Soreness[] = ['fresh', 'moderate', 'sore']
 
 export default function RecoveryScreen({ navigation }: any) {
   const insets = useSafeAreaInsets()
+  const { uid } = useAuthStore()
+  const { cycleCount, markSessionCompleted, advanceDay } = useQueueStore()
   const [soreness, setSoreness] = useState<Record<string, Soreness>>(
     Object.fromEntries(muscleGroups.map(m => [m.name, m.default]))
   )
   const [completedStretches, setCompletedStretches] = useState<Set<number>>(new Set())
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const { waterLitres, addWater, load: loadNutrition } = useNutritionStore()
 
   React.useEffect(() => {
@@ -56,6 +61,75 @@ export default function RecoveryScreen({ navigation }: any) {
 
   const allDone = completedStretches.size === STRETCH_ROUTINE.length
 
+  const heatmapData = muscleGroups.map((mg) => {
+    const state = soreness[mg.name] || 'fresh'
+    const statusMap = {
+      fresh: { status: 'fresh' as const, pct: 15, label: '3 days ago' },
+      moderate: { status: 'moderate' as const, pct: 55, label: 'Yesterday' },
+      sore: { status: 'fatigued' as const, pct: 85, label: 'Today' },
+    }
+    const info = statusMap[state]
+    return {
+      name: mg.name,
+      status: info.status,
+      fatiguePct: info.pct,
+      lastTrained: info.label,
+    }
+  })
+
+  async function handleCompleteRecovery() {
+    setIsSubmitting(true)
+    try {
+      const effectiveUid = uid || 'local_user'
+      await saveWorkoutSession({
+        uid: effectiveUid,
+        day: 7,
+        dayName: 'Recovery & Rest',
+        durationMinutes: 20,
+        totalVolume: 0,
+        prs: [],
+        notes: `Soreness: ${Object.entries(soreness).map(([k, v]) => `${k}:${v}`).join(', ')}. Completed ${completedStretches.size}/${STRETCH_ROUTINE.length} stretches.`,
+        exercises: [],
+        loggedAt: null,
+      })
+
+      await markSessionCompleted(effectiveUid)
+      await advanceDay(1, effectiveUid)
+
+      Alert.alert(
+        `Cycle ${cycleCount + 1} Unlocked!`,
+        `Rest day completed. You are now on Day 1 (Push) of Cycle ${cycleCount + 1}.`,
+        [
+          {
+            text: "Let's Train",
+            onPress: () => {
+              if (navigation?.canGoBack?.()) {
+                navigation.goBack()
+              } else {
+                navigation?.navigate?.('MainTabs', { screen: 'Home' })
+              }
+            },
+          },
+        ]
+      )
+    } catch (err) {
+      console.error('[Recovery] Error completing recovery:', err)
+      Alert.alert('Error', 'Failed to save rest day status.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function handleSkipToDay1() {
+    const effectiveUid = uid || 'local_user'
+    await advanceDay(1, effectiveUid)
+    if (navigation?.canGoBack?.()) {
+      navigation.goBack()
+    } else {
+      navigation?.navigate?.('MainTabs', { screen: 'Home' })
+    }
+  }
+
   return (
     <ScrollView style={[s.container, { paddingTop: insets.top }]} showsVerticalScrollIndicator={false}>
       {/* Header */}
@@ -67,7 +141,7 @@ export default function RecoveryScreen({ navigation }: any) {
         )}
 
         <View style={s.headerCenter}>
-          <Text style={s.dayLabel}>DAY 7 · RECOVERY</Text>
+          <Text style={s.dayLabel}>DAY 7 · RECOVERY · CYCLE {cycleCount}</Text>
           <Text style={s.quote}>"Growth happens{'\n'}after the battle."</Text>
         </View>
 
@@ -93,7 +167,7 @@ export default function RecoveryScreen({ navigation }: any) {
         </View>
 
         {/* Muscle Recovery Heatmap */}
-        <MuscleHeatmap />
+        <MuscleHeatmap muscles={heatmapData} />
 
         {/* Soreness map */}
         <View style={s.card}>
@@ -179,9 +253,39 @@ export default function RecoveryScreen({ navigation }: any) {
           ))}
         </View>
 
-        <Text style={[s.muted, { textAlign: 'center', paddingVertical: spacing.lg }]}>
-          See you on Day 1. Push day is waiting.
-        </Text>
+        {/* CYCLE PROGRESSION & ACTION */}
+        <View style={[s.card, { borderColor: colors.titaniumMid, backgroundColor: '#161922', padding: spacing.lg, marginTop: spacing.md }]}>
+          <Text style={[s.label, { color: colors.titanium, marginBottom: 4 }]}>CYCLE PROGRESSION</Text>
+          <Text style={{ fontSize: 20, fontWeight: '600', color: colors.textPrimary, marginBottom: 6 }}>
+            Cycle {cycleCount} → Cycle {cycleCount + 1}
+          </Text>
+          <Text style={{ fontSize: 13, color: colors.textMuted, lineHeight: 20, marginBottom: spacing.lg }}>
+            Completing your rest day logs your recovery stats and rolls your schedule over into Day 1 (Push Day) of Cycle {cycleCount + 1}.
+          </Text>
+
+          <TouchableOpacity
+            style={[
+              s.actionBtn,
+              { backgroundColor: colors.titanium },
+              isSubmitting && { opacity: 0.7 }
+            ]}
+            onPress={handleCompleteRecovery}
+            disabled={isSubmitting}
+            activeOpacity={0.85}
+          >
+            <Text style={s.actionBtnText}>
+              {isSubmitting ? 'Saving Rest Day...' : `Complete Rest Day & Start Cycle ${cycleCount + 1} →`}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{ marginTop: spacing.md, paddingVertical: spacing.sm, alignItems: 'center' }}
+            onPress={handleSkipToDay1}
+          >
+            <Text style={{ fontSize: 13, color: colors.textMuted }}>Skip to Day 1 (Push)</Text>
+          </TouchableOpacity>
+        </View>
+
       </View>
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -223,4 +327,16 @@ const s = StyleSheet.create({
   stretchName: { fontSize: 13, color: colors.textPrimary, fontWeight: '500' },
 
   tipRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: '#1a1e28' },
+  actionBtn: {
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.bg,
+  },
 })
