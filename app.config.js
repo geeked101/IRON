@@ -1,6 +1,4 @@
 /** @type {import('expo/config').ExpoConfig} */
-const appJson = require('./app.json')
-
 const FIREBASE_ENV_KEYS = [
   'EXPO_PUBLIC_FIREBASE_API_KEY',
   'EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN',
@@ -26,12 +24,10 @@ if (!process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) {
   )
 }
 
-module.exports = {
-  expo: {
-    ...appJson.expo,
-    plugins: [
-      ...(appJson.expo.plugins || []),
-      'expo-web-browser',
-    ],
-  },
-}
+module.exports = ({ config }) => ({
+  ...config,
+  plugins: [
+    ...(config.plugins || []),
+    'expo-web-browser',
+  ],
+})
